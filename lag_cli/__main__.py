@@ -185,9 +185,7 @@ def _project_option_callback(
 
 def _warn_if_missing_project(project: str | None) -> None:
     if not project:
-        logger.warning(
-            "No --project was provided; LAMIN_CURRENT_PROJECT is unset for this run."
-        )
+        logger.warning("no --project was provided and LAMIN_CURRENT_PROJECT is not set")
 
 
 def _print_generated_tool_contents(paths: list[Path]) -> None:
