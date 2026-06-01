@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lag = "lag_cli.__main__:main"
+lag = "lag_cli.__main__:_safe_main"
 
 [project.urls]
 Home = "https://github.com/laminlabs/lag-cli"

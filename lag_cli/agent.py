@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import re
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import requests
+import litellm
+from dotenv import load_dotenv
 
 from .context import get_lamindb_skill, get_local_skill
+from .do_executor import execute_code_string
 from .writer import (
     write_from_template,
     write_jupyter_notebook,
@@ -20,11 +22,22 @@ if TYPE_CHECKING:
 
     from .run_context import RunContext
 
+# load API keys from ~/llms.env so both GEMINI_API_KEY and ANTHROPIC_API_KEY are available
+load_dotenv(dotenv_path=Path("~/llms.env").expanduser())
+
 PLAN_SYSTEM_INSTRUCTION = (
-    "You are a tool authoring agent. In --plan mode, create or update runnable "
-    "tool files (.py/.ipynb) that satisfy the prompt. If the prompt references an "
-    "explicit tool key/path, update that exact file instead of creating a new name. "
-    "You may read skills/query LaminDB for context, but do not write markdown plans."
+    "You are a scientific curation agent that works in an iterative loop. "
+    "Follow the provided skills exactly. Your workflow is:\n"
+    "1. Write a runnable Python script with write_python_script.\n"
+    "2. EXECUTE it immediately with execute_python.\n"
+    "3. Read the tool result carefully: check exit_code, stdout, and stderr.\n"
+    "   - exit_code=0 and artifact saved → you are done.\n"
+    "   - exit_code!=0 or any error in stderr → identify the SPECIFIC error, fix ONLY that part, and execute again.\n"
+    "   - Do NOT retry the exact same code after an error — you must change something.\n"
+    "4. Repeat until exit_code=0 and the artifact is saved.\n"
+    "You are NOT done after merely writing the script. "
+    "Strictly obey registry rules: never add new ontology terms autonomously; "
+    "if a label cannot be mapped, stop and report it to the user."
 )
 
 DO_SYSTEM_INSTRUCTION = (
@@ -36,102 +49,132 @@ DO_SYSTEM_INSTRUCTION = (
 )
 
 
-def _function_declarations(mode: str) -> list[dict[str, Any]]:
-    declarations: list[dict[str, Any]] = [
+def _tool_definitions(mode: str) -> list[dict[str, Any]]:
+    """Return tools in OpenAI/LiteLLM format."""
+    tools: list[dict[str, Any]] = [
         {
-            "name": "get_local_skill",
-            "description": "Find relevant local SKILL.md docs for a topic.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "topic": {"type": "STRING"},
-                    "skills_root": {"type": "STRING"},
+            "type": "function",
+            "function": {
+                "name": "execute_python",
+                "description": (
+                    "Execute Python code and return stdout and stderr. "
+                    "Use this to run curation code, observe the result, and fix errors. "
+                    "Call this repeatedly until lamindb validation passes."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string"},
+                    },
+                    "required": ["code"],
                 },
-                "required": ["topic"],
             },
         },
         {
-            "name": "get_lamindb_skill",
-            "description": "Query laminlabs/biomed-skills for relevant transforms/artifacts.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "key": {"type": "STRING"},
-                    "limit": {"type": "NUMBER"},
+            "type": "function",
+            "function": {
+                "name": "get_local_skill",
+                "description": "Find relevant local SKILL.md docs for a topic.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "skills_root": {"type": "string"},
+                    },
+                    "required": ["topic"],
                 },
-                "required": ["key"],
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_lamindb_skill",
+                "description": "Query laminlabs/biomed-skills for relevant transforms/artifacts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string"},
+                        "limit": {"type": "number"},
+                    },
+                    "required": ["key"],
+                },
             },
         },
     ]
     if mode == "plan":
-        declarations.append(
+        tools.append(
             {
-                "name": "write_from_template",
-                "description": "Create a file from an existing template path.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "template_path": {"type": "STRING"},
-                        "filename": {"type": "STRING"},
+                "type": "function",
+                "function": {
+                    "name": "write_from_template",
+                    "description": "Create a file from an existing template path.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "template_path": {"type": "string"},
+                            "filename": {"type": "string", "description": "Output filename (optional, auto-generated if omitted)."},
+                        },
+                        "required": ["template_path"],
                     },
-                    "required": ["template_path", "filename"],
                 },
             }
         )
-    if mode == "plan":
-        declarations.append(
+        tools.append(
             {
-                "name": "write_jupyter_notebook",
-                "description": "Write an ipynb notebook file with markdown/code cells.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "filename": {"type": "STRING"},
-                        "cells": {
-                            "type": "ARRAY",
-                            "items": {
-                                "type": "OBJECT",
-                                "properties": {
-                                    "type": {"type": "STRING"},
-                                    "content": {"type": "STRING"},
+                "type": "function",
+                "function": {
+                    "name": "write_jupyter_notebook",
+                    "description": "Write an ipynb notebook file with markdown/code cells.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "filename": {"type": "string", "description": "Output filename (optional, auto-generated if omitted)."},
+                            "cells": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": {"type": "string"},
+                                        "content": {"type": "string"},
+                                    },
+                                    "required": ["type", "content"],
                                 },
-                                "required": ["type", "content"],
                             },
                         },
+                        "required": ["cells"],
                     },
-                    "required": ["filename", "cells"],
                 },
             }
         )
     if mode in {"plan", "do"}:
-        declarations.append(
+        tools.append(
             {
-                "name": "write_python_script",
-                "description": "Write a runnable Python script file.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "filename": {"type": "STRING"},
-                        "code": {"type": "STRING"},
+                "type": "function",
+                "function": {
+                    "name": "write_python_script",
+                    "description": "Write a runnable Python script file.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "filename": {"type": "string", "description": "Output filename (optional, auto-generated if omitted)."},
+                            "code": {"type": "string"},
+                        },
+                        "required": ["code"],
                     },
-                    "required": ["filename", "code"],
                 },
             }
         )
-    return declarations
+    return tools
 
 
-def _tool_payload(mode: str) -> list[dict[str, Any]]:
-    return [{"functionDeclarations": _function_declarations(mode)}]
-
-
-def _extract_text(parts: list[dict[str, Any]]) -> str:
-    chunks: list[str] = []
-    for part in parts:
-        text = part.get("text")
-        if isinstance(text, str):
-            chunks.append(text)
-    return "\n".join(chunks).strip()
+def _extract_text_from_content(content: Any) -> str:
+    """Extract plain text from an OpenAI-style message content field."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        chunks = [block.get("text", "") for block in content if isinstance(block, dict)]
+        return "\n".join(c for c in chunks if c).strip()
+    return ""
 
 
 def _looks_like_wrapper_runner(code: str, existing_generated_files: list[str]) -> bool:
@@ -190,63 +233,6 @@ def _default_filename_for_tool(tool_name: str, default_output_file: Path) -> str
     return str(default_output_file.with_suffix(expected_suffix))
 
 
-def _post_generate_content(
-    *,
-    url: str,
-    api_key: str,
-    payload: dict[str, Any],
-    timeout_seconds: int = 120,
-    max_attempts: int = 4,
-    progress_callback: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
-    headers = {
-        "Content-Type": "application/json",
-        "X-goog-api-key": api_key,
-    }
-    backoff_seconds = 1.0
-    last_error: Exception | None = None
-
-    for attempt in range(1, max_attempts + 1):
-        try:
-            if progress_callback is not None:
-                progress_callback(f"gemini request attempt {attempt}/{max_attempts}")
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=timeout_seconds,
-            )
-            status = response.status_code
-            if status in {429, 500, 502, 503, 504} and attempt < max_attempts:
-                if progress_callback is not None:
-                    progress_callback(
-                        f"gemini transient status {status}, retrying in {backoff_seconds:.1f}s"
-                    )
-                time.sleep(backoff_seconds)
-                backoff_seconds *= 2
-                continue
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as exc:
-            last_error = exc
-            if attempt >= max_attempts:
-                break
-            if progress_callback is not None:
-                progress_callback(
-                    f"gemini request failed ({exc.__class__.__name__}), retrying in {backoff_seconds:.1f}s"
-                )
-            time.sleep(backoff_seconds)
-            backoff_seconds *= 2
-
-    if isinstance(last_error, requests.HTTPError) and last_error.response is not None:
-        status = last_error.response.status_code
-        body_preview = last_error.response.text[:1000]
-        raise RuntimeError(
-            f"Gemini API request failed after retries (status={status}). "
-            f"Response preview: {body_preview}"
-        ) from last_error
-    raise RuntimeError("Gemini API request failed after retries.") from last_error
-
 
 def _dispatch_tool(
     *,
@@ -256,6 +242,9 @@ def _dispatch_tool(
     default_output_file: Path,
     existing_generated_files: list[str],
 ) -> dict[str, Any]:
+    if name == "execute_python":
+        code = str(args.get("code", ""))
+        return execute_code_string(code=code, run_uid=run_context.run_uid)
     if name == "get_local_skill":
         return get_local_skill(
             topic=str(args.get("topic", "")),
@@ -401,6 +390,77 @@ def _dispatch_tool(
     }
 
 
+def _trim_messages(messages: list[dict[str, Any]], keep_tool_results: int = 2) -> list[dict[str, Any]]:
+    """Keep system + user + all assistant messages, but only the last N tool results.
+
+    Old tool results bloat the context window fast (stdout/stderr can be 4k chars each).
+    We summarise older ones to a one-liner so the model still sees the history shape
+    but doesn't hit token limits.
+    """
+    result: list[dict[str, Any]] = []
+    tool_result_indices: list[int] = []
+
+    for i, msg in enumerate(messages):
+        result.append(msg)
+        if msg.get("role") == "tool":
+            tool_result_indices.append(i)
+
+    # replace older tool results with a short summary
+    to_summarise = tool_result_indices[:-keep_tool_results] if len(tool_result_indices) > keep_tool_results else []
+    for i in to_summarise:
+        try:
+            payload = json.loads(result[i].get("content", "{}"))
+            exit_code = payload.get("exit_code", "?")
+            stdout_snippet = (payload.get("stdout") or "")[:80].strip()
+            result[i] = {
+                "role": "tool",
+                "tool_call_id": result[i].get("tool_call_id", ""),
+                "content": json.dumps({"exit_code": exit_code, "summary": stdout_snippet or "(no output)"}),
+            }
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    return result
+
+
+def _call_llm(
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    progress_callback: Callable[[str], None] | None = None,
+    max_attempts: int = 5,
+) -> Any:
+    """Call the LLM via LiteLLM with retry/backoff for rate limits."""
+    import time
+
+    backoff = 30.0
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        if progress_callback is not None:
+            progress_callback(f"calling {model} (attempt {attempt}/{max_attempts}) ...")
+        try:
+            response = litellm.completion(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=0.2,
+            )
+            return response.choices[0].message
+        except litellm.RateLimitError as exc:
+            last_exc = exc
+            if attempt >= max_attempts:
+                break
+            if progress_callback is not None:
+                progress_callback(f"rate limit hit, retrying in {backoff:.0f}s ...")
+            time.sleep(backoff)
+            backoff *= 2
+        except Exception:
+            raise
+    raise RuntimeError(f"LLM rate limit persisted after {max_attempts} attempts") from last_exc
+
+
 def run_agent(
     *,
     api_key: str,
@@ -412,18 +472,54 @@ def run_agent(
     system_instruction = (
         PLAN_SYSTEM_INSTRUCTION if run_context.mode == "plan" else DO_SYSTEM_INSTRUCTION
     )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{run_context.model}:generateContent"
-    )
-    contents: list[dict[str, Any]] = [
-        {
-            "role": "user",
-            "parts": [
-                {"text": f"{system_instruction}\n\nPrompt: {run_context.prompt}"},
-            ],
-        }
+
+    # set API key in env so LiteLLM can pick it up for any provider
+    model = run_context.model
+    if model.startswith("claude"):
+        os.environ.setdefault("ANTHROPIC_API_KEY", api_key)
+    elif model.startswith("groq/"):
+        os.environ.setdefault("GROQ_API_KEY", api_key)
+    elif "/" not in model:
+        # bare Gemini model name like "gemini-2.5-flash" — add provider prefix
+        os.environ.setdefault("GEMINI_API_KEY", api_key)
+        model = f"gemini/{model}"
+    else:
+        # already has a provider prefix like "gemini/...", "openai/...", etc.
+        os.environ.setdefault("GEMINI_API_KEY", api_key)
+
+    # pick skill key from prompt keywords — fall back to "curate" for scRNA
+    _prompt_lower = run_context.prompt.lower()
+    if "bulkrna" in _prompt_lower or "bulk rna" in _prompt_lower or "bulk_rna" in _prompt_lower or "rnaseq" in _prompt_lower:
+        _skill_key = "bulkrna"
+    elif "standardize" in _prompt_lower and "append" in _prompt_lower:
+        _skill_key = "standardize-append"
+    else:
+        _skill_key = "curate"
+
+    # retrieve relevant skills upfront and inject into context before the loop
+    skill_result = get_lamindb_skill(key=_skill_key)
+    skill_content = skill_result.get("skill_content", "")
+    if progress_callback is not None:
+        if skill_content:
+            progress_callback(f"skills loaded: {[r['key'] for r in skill_result.get('results', [])]}")
+        else:
+            progress_callback(f"no skills found — warnings: {skill_result.get('warnings', [])}")
+
+    # trim skill content to fit within smaller model context windows
+    MAX_SKILL_CHARS = 4000
+    if len(skill_content) > MAX_SKILL_CHARS:
+        skill_content = skill_content[:MAX_SKILL_CHARS] + "\n\n[skill truncated for brevity]"
+
+    system_text = system_instruction
+    if skill_content:
+        system_text = f"{system_instruction}\n\n## Relevant Skills\n\n{skill_content}"
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_text},
+        {"role": "user", "content": run_context.prompt},
     ]
+    tools = _tool_definitions(run_context.mode)
+
     trace_events: list[dict[str, Any]] = []
     generated_file: str | None = None
     generated_files: list[str] = []
@@ -431,50 +527,48 @@ def run_agent(
     fatal_error: str | None = None
     resolved_runnable_path: str | None = None
     short_circuit_execute = False
+
     if progress_callback is not None:
-        progress_callback(f"mode={run_context.mode} model={run_context.model}")
+        progress_callback(f"mode={run_context.mode} model={model}")
         progress_callback(f"prompt: {run_context.prompt}")
 
     for step in range(1, max_steps + 1):
         if progress_callback is not None:
             progress_callback(f"step {step}: waiting for model response")
-        payload = {
-            "contents": contents,
-            "tools": _tool_payload(run_context.mode),
-            "generationConfig": {"temperature": 0.2},
-        }
-        data = _post_generate_content(
-            url=url,
-            api_key=api_key,
-            payload=payload,
+
+        response_msg = _call_llm(
+            model=model,
+            messages=_trim_messages(messages),
+            tools=tools,
             progress_callback=progress_callback,
         )
-        candidate = data.get("candidates", [{}])[0]
-        response_message = candidate.get("content", {})
-        contents.append(response_message)
-        parts = response_message.get("parts", [])
-        text_preview = _extract_text(parts)
-        if progress_callback is not None and text_preview:
-            preview = (
-                text_preview if len(text_preview) <= 300 else f"{text_preview[:300]}..."
-            )
+
+        # add assistant message to history
+        messages.append(response_msg)
+
+        text_content = _extract_text_from_content(response_msg.content)
+        if progress_callback is not None and text_content:
+            preview = text_content if len(text_content) <= 300 else f"{text_content[:300]}..."
             progress_callback(f"step {step}: model text: {preview}")
 
-        trace_events.append({"step": step, "model_response": response_message})
-        tool_calls = [p.get("functionCall") for p in parts if "functionCall" in p]
+        trace_events.append({"step": step, "model_response": {"content": text_content}})
+
+        tool_calls = response_msg.tool_calls or []
         if not tool_calls:
-            final_text = _extract_text(parts)
+            final_text = text_content
             if progress_callback is not None:
                 progress_callback("model finished without further tool calls")
             break
 
         for tool_call in tool_calls:
-            if not isinstance(tool_call, dict):
-                continue
-            name = str(tool_call.get("name", ""))
-            args = tool_call.get("args", {})
+            name = tool_call.function.name
+            try:
+                args = json.loads(tool_call.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
             if not isinstance(args, dict):
                 args = {}
+
             if progress_callback is not None:
                 progress_callback(
                     f"step {step}: tool call -> {name} args={json.dumps(args)}"
@@ -503,24 +597,33 @@ def run_agent(
                     "tool_result": result,
                 }
             )
-            contents.append(
+
+            # add tool result back to messages in OpenAI format
+            messages.append(
                 {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "functionResponse": {
-                                "name": name,
-                                "response": result,
-                            }
-                        }
-                    ],
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result),
                 }
             )
+
             if progress_callback is not None:
                 status = result.get("status", "ok")
                 progress_callback(f"step {step}: tool result status={status}")
                 if status == "error" and result.get("message"):
                     progress_callback(f"step {step}: tool error: {result['message']}")
+                # show execution output so we can follow what the script actually did
+                if name == "execute_python":
+                    stdout = (result.get("stdout") or "").strip()
+                    stderr = (result.get("stderr") or "").strip()
+                    exit_code = result.get("exit_code", "?")
+                    progress_callback(f"step {step}: exit_code={exit_code}")
+                    if stdout:
+                        snippet = stdout if len(stdout) <= 600 else stdout[-600:]
+                        progress_callback(f"step {step}: stdout: {snippet}")
+                    if stderr:
+                        snippet = stderr if len(stderr) <= 600 else stderr[-600:]
+                        progress_callback(f"step {step}: stderr: {snippet}")
                 if result.get("short_circuit_execute") and result.get("message"):
                     progress_callback(f"step {step}: {result['message']}")
 
@@ -549,7 +652,7 @@ def run_agent(
 
     return {
         "run_uid": run_context.run_uid,
-        "contents": contents,
+        "contents": messages,
         "trace_events": trace_events,
         "generated_file": generated_file,
         "generated_files": generated_files,

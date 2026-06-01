@@ -71,10 +71,25 @@ def _execute_python(script_path: Path, run_uid: str) -> dict[str, Any]:
     return {
         "kind": "python_script",
         "path": str(script_path),
+        "status": "success" if completed.returncode == 0 else "error",
         "exit_code": completed.returncode,
         "stdout": completed.stdout[-4000:],
         "stderr": completed.stderr[-4000:],
     }
+
+
+def execute_code_string(*, code: str, run_uid: str) -> dict[str, Any]:
+    """Write code string to a temp file, execute it, return stdout/stderr, then clean up."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(code)
+        tmp_path = Path(tmp.name)
+    try:
+        return _execute_python(tmp_path, run_uid)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def _execute_notebook(notebook_path: Path, run_uid: str) -> dict[str, Any]:
