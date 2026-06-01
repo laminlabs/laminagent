@@ -15,6 +15,7 @@ from .output_saver import save_generated_tool_files
 from .run_context import RunContext, create_run_uid
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
+_GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
 _RUNNABLE_KEY_PATTERN = re.compile(r"([A-Za-z0-9_./-]+\.(?:py|ipynb))")
 _COLOR_ENABLED = os.getenv("NO_COLOR") is None
 
@@ -61,8 +62,16 @@ def _progress(message: str) -> None:
         _secho("→ prompt: ", nl=False, fg="black")
         _secho(message.removeprefix("prompt: "), fg="cyan")
         return
-    if message.startswith("calling "):
-        _secho(f"→ {message}", fg="magenta")
+    if message.startswith("gemini request attempt"):
+        attempt_match = _GEMINI_ATTEMPT_PATTERN.match(message)
+        if attempt_match is not None and int(attempt_match.group(1)) > 1:
+            _secho(f"→ {message}", fg="magenta")
+        return
+    if message.startswith("gemini transient status"):
+        _secho(f"→ {message}", fg="yellow")
+        return
+    if message.startswith("gemini request failed"):
+        _secho(f"→ {message}", fg="red")
         return
     if message == "model finished without further tool calls":
         _secho(f"→ {message}", fg="green")
@@ -90,15 +99,6 @@ def _progress(message: str) -> None:
         color = "green" if status == "success" else "yellow"
         _secho("tool result status=", nl=False, fg="black")
         _secho(status, fg=color)
-    elif detail.startswith("exit_code="):
-        color = "green" if detail == "exit_code=0" else "red"
-        _secho(f"→ step {step}: {detail}", fg=color)
-    elif detail.startswith("stdout: "):
-        _secho(f"→ step {step}: stdout:", fg="cyan")
-        _secho(detail.removeprefix("stdout: "), dim=True)
-    elif detail.startswith("stderr: "):
-        _secho(f"→ step {step}: stderr:", fg="yellow")
-        _secho(detail.removeprefix("stderr: "), dim=True)
     else:
         _secho(detail, dim=True)
 
@@ -211,17 +211,9 @@ def run_agent_mode(
 ) -> dict[str, str | None]:
     workspace_env_path = Path("~/llms.env").expanduser()
     load_dotenv(dotenv_path=workspace_env_path)
-    # pick the right API key based on which model is requested
-    if model.startswith("claude"):
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise click.ClickException("ANTHROPIC_API_KEY not found in ~/llms.env")
-    elif model.startswith("groq/"):
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise click.ClickException("GROQ_API_KEY not found in ~/llms.env")
-    else:
-        api_key = os.getenv("GEMINI_API_KEY") or ""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise click.ClickException("GEMINI_API_KEY not found in ~/llms.env")
 
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
@@ -332,7 +324,7 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
     help="Switch to planning mode (plan generation).",
 )
 @click.option("--output-file", type=click.Path(path_type=Path), default=None)
-@click.option("--model", type=str, default="claude-sonnet-4-5", show_default=True)
+@click.option("--model", type=str, default="gemini-flash-latest", show_default=True)
 @click.option(
     "--plan-file",
     type=click.Path(path_type=Path, exists=True),
@@ -416,25 +408,5 @@ def main(
         _secho(str(outcome["final_text"]), dim=True)
 
 
-def _safe_main() -> None:
-    """Wrapper that suppresses the Django 5.2 + BigAutoField cleanup crash.
-
-    lamindb's @ln.track() decorator calls run.save() after main() returns.
-    With Django 5.2 this crashes with FieldError on BigAutoField — the
-    curation output is already complete at that point.
-    """
-    try:
-        main()
-    except Exception as _e:
-        if "BigAutoField" in str(_e) or "Unsupported lookup" in str(_e):
-            click.echo(
-                "! run metadata cleanup failed (lamindb/Django version mismatch)"
-                " — curation output is unaffected",
-                err=True,
-            )
-        else:
-            raise
-
-
 if __name__ == "__main__":
-    _safe_main()
+    main()
