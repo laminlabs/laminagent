@@ -15,4 +15,11 @@ def lint(session: nox.Session) -> None:
 
 @nox.session()
 def build(session):
+    session.install("litellm")
+    run_pytest(session)
+
+
+@nox.session()
+def install(session):
+    session.install("litellm")
     run_pytest(session)
