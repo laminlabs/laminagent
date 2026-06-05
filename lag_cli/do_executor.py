@@ -11,6 +11,37 @@ import nbformat
 
 RUN_UID_ENV_VAR = "LAMIN_INITIATED_BY_RUN_UID"
 
+# ln.track(...) / ln.finish(...) calls including any trailing semicolon.
+# Intermediate execute_python steps run in throwaway temp files; letting them
+# call ln.track() creates a new Transform/Run per step (registry pollution) and
+# triggers lamindb's interactive "renamed (1) or copy (2)?" prompt, which has no
+# stdin in a subprocess and crashes. Only the CLI @ln.flow transform is tracked.
+_TRACK_CALL_RE = re.compile(r"ln\.track\s*\([^)]*\)\s*;?")
+_FINISH_CALL_RE = re.compile(r"ln\.finish\s*\(\s*\)\s*;?")
+
+
+def strip_tracking_calls(code: str) -> str:
+    """Remove ln.track(...) / ln.finish(...) so temp scripts don't create transforms."""
+    code = _TRACK_CALL_RE.sub("", code)
+    code = _FINISH_CALL_RE.sub("", code)
+    return code
+
+
+# The model frequently rewrites the instance org "laminlabs/" as "lamindb/"
+# (confusing it with the package name `import lamindb as ln`). "lamindb" is not
+# a real account, so ln.connect("lamindb/...") fails with InstanceNotFoundError.
+# This deterministic guard restores the real org before execution.
+_BAD_SLUG_RE = re.compile(r"""(connect\s*\(\s*["'])lamindb/""")
+
+
+def fix_instance_slug(code: str) -> str:
+    """Rewrite ln.connect("lamindb/...") to the real org "laminlabs/...".
+
+    Only touches the connect() argument, so a legitimate `import lamindb` and
+    `lamindb` references elsewhere are left untouched.
+    """
+    return _BAD_SLUG_RE.sub(r"\1laminlabs/", code)
+
 
 def find_plan_file(explicit_plan_file: Path | None = None) -> Path | None:
     """Find an explicit or best candidate markdown plan file."""
@@ -71,10 +102,34 @@ def _execute_python(script_path: Path, run_uid: str) -> dict[str, Any]:
     return {
         "kind": "python_script",
         "path": str(script_path),
+        "status": "success" if completed.returncode == 0 else "error",
         "exit_code": completed.returncode,
         "stdout": completed.stdout[-4000:],
         "stderr": completed.stderr[-4000:],
     }
+
+
+def execute_code_string(
+    *, code: str, run_uid: str, strip_tracking: bool = True
+) -> dict[str, Any]:
+    """Write code string to a temp file, execute it, return stdout/stderr, then clean up.
+
+    By default strips ln.track()/ln.finish() so exploratory steps don't create
+    throwaway transforms or hit lamindb's interactive rename prompt.
+    """
+    import tempfile
+
+    code_to_run = strip_tracking_calls(code) if strip_tracking else code
+    code_to_run = fix_instance_slug(code_to_run)
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(code_to_run)
+        tmp_path = Path(tmp.name)
+    try:
+        return _execute_python(tmp_path, run_uid)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def _execute_notebook(notebook_path: Path, run_uid: str) -> dict[str, Any]:

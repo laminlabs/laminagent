@@ -38,95 +38,135 @@ def get_local_skill(
     }
 
 
-def _collect_db_matches(
-    db: Any, key: str, limit: int
-) -> tuple[list[dict[str, str]], list[str]]:
-    query_lower = key.lower()
+def _load_local_biomed_skills(*, key_lower: str, limit: int) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
-    warnings: list[str] = []
+    _local_root = Path(__file__).resolve().parent.parent.parent / "biomed-skills"
+    if not _local_root.is_dir():
+        return results
+    for skill_path in sorted(_local_root.glob("*.md")):
+        if key_lower not in skill_path.name.lower():
+            continue
+        try:
+            content = skill_path.read_text(encoding="utf-8")
+            results.append(
+                {
+                    "type": "local_file",
+                    "uid": "",
+                    "key": f"biomed-skills/{skill_path.name}",
+                    "description": "Local skill (biomed-skills/)",
+                    "content": content,
+                }
+            )
+            if len(results) >= limit:
+                break
+        except Exception as exc:
+            # caller collects warnings
+            raise OSError(f"Could not read local '{skill_path}': {exc}") from exc
+    return results
 
+
+def get_skill_local_first(
+    *, key: str, run_uid: str | None = None, limit: int = 3
+) -> dict[str, Any]:
+    """Load skills from local biomed-skills/*.md first, falling back to remote.
+
+    Reading local files needs NO ``ln.connect()`` switch, so in the normal case
+    Django is never re-initialized mid-process — which is what destabilizes the
+    tracked run's cleanup (the BigAutoField crash). Only when a skill isn't found
+    locally do we fall back to the remote laminlabs/biomed-skills (which does
+    switch instances).
+    """
+    key_lower = key.lower()
     try:
-        transform = db.Transform.get(key=key)
-        description = str(getattr(transform, "description", "") or "")
-        results.append(
-            {
-                "type": "transform",
-                "uid": str(transform.uid),
-                "key": str(getattr(transform, "key", "") or ""),
-                "description": description[:1000],
-            }
+        local_results = _load_local_biomed_skills(key_lower=key_lower, limit=limit)
+    except OSError:
+        local_results = []
+
+    if local_results:
+        skill_content = "\n\n---\n\n".join(
+            r["content"] for r in local_results if r.get("content")
         )
-    except Exception as exc:
-        message = str(exc)
-        if "does not exist" not in message.lower():
-            warnings.append(f"Transform lookup failed: {exc}")
+        return {
+            "run_uid": run_uid,
+            "key": key,
+            "results": local_results,
+            "searched_instances": ["local/biomed-skills"],
+            "message": f"Found {len(local_results)} skill(s) locally.",
+            "skill_content": skill_content,
+            "warnings": [],
+        }
 
-    try:
-        if len(results) < limit:
-            artifacts = db.Artifact.filter().all()
-            for artifact in artifacts:
-                desc = str(getattr(artifact, "description", "") or "")
-                key = str(getattr(artifact, "key", "") or "")
-                haystack = f"{key}\n{desc}".lower()
-                if query_lower in haystack:
-                    results.append(
-                        {
-                            "type": "artifact",
-                            "uid": str(artifact.uid),
-                            "key": key,
-                            "description": desc[:1000],
-                        }
-                    )
-                    if len(results) >= limit:
-                        break
-    except Exception as exc:
-        warnings.append(f"Artifact lookup failed: {exc}")
-
-    return results, warnings
+    # not found locally — fall back to the remote registry (this switches instances)
+    return get_lamindb_skill(key=key, run_uid=run_uid, limit=limit)
 
 
-def get_lamindb_skill(*, key: str, run_uid: str, limit: int = 5) -> dict[str, Any]:
-    """Best-effort lookup from the current instance, then biomed-skills fallback."""
-    current_slug: str | None = None
+def get_lamindb_skill(
+    *, key: str, run_uid: str | None = None, limit: int = 3
+) -> dict[str, Any]:
+    """Load .md skills from laminlabs/biomed-skills whose key contains the search term.
+
+    Uses ln.DB() to query the remote instance without calling ln.connect(), which
+    prevents Django re-initialization and keeps the tracked run stable. Falls back
+    to local ``biomed-skills/*.md`` if remote fails.
+    """
     warnings: list[str] = []
-
-    try:
-        current_slug = str(ln.setup.settings.instance.slug)
-    except Exception as exc:
-        current_slug = None
-        warnings.append(f"Could not read current LaminDB instance before lookup: {exc}")
-
-    slugs_to_search: list[str] = []
-    if current_slug:
-        slugs_to_search.append(current_slug)
-    if "laminlabs/biomed-skills" not in slugs_to_search:
-        slugs_to_search.append("laminlabs/biomed-skills")
-
     results: list[dict[str, str]] = []
+    key_lower = key.lower()
     searched_instances: list[str] = []
 
-    for slug in slugs_to_search:
+    try:
+        db = ln.DB("laminlabs/biomed-skills")
+        searched_instances.append("laminlabs/biomed-skills")
+        # only the latest version of each skill — re-uploads create new versions
+        all_artifacts = db.Artifact.filter(suffix=".md", is_latest=True).all()
+        seen_keys: set[str] = set()
+        for artifact in all_artifacts:
+            artifact_key = str(getattr(artifact, "key", "") or "")
+            desc = str(getattr(artifact, "description", "") or "")
+            if key_lower not in artifact_key.lower() and key_lower not in desc.lower():
+                continue
+            if artifact_key in seen_keys:
+                continue
+            seen_keys.add(artifact_key)
+            content = ""
+            try:
+                local_path = artifact.cache()
+                content = Path(local_path).read_text(encoding="utf-8")
+            except Exception as exc:
+                warnings.append(f"Could not read '{artifact_key}': {exc}")
+            results.append(
+                {
+                    "type": "artifact",
+                    "uid": str(getattr(artifact, "uid", "") or ""),
+                    "key": artifact_key,
+                    "description": desc[:1000],
+                    "content": content,
+                }
+            )
+            if len(results) >= limit:
+                break
+    except Exception as exc:
+        warnings.append(f"Could not load skills from laminlabs/biomed-skills: {exc}")
+
+    if not results:
         try:
-            db = ln.DB(slug)
-            searched_instances.append(slug)
-        except Exception as exc:
-            warnings.append(f"Could not open DB('{slug}'): {exc}")
-            continue
+            local_results = _load_local_biomed_skills(key_lower=key_lower, limit=limit)
+            if local_results:
+                searched_instances.append("local/biomed-skills")
+                results = local_results
+        except OSError as exc:
+            warnings.append(str(exc))
 
-        instance_results, instance_warnings = _collect_db_matches(
-            db=db, key=key, limit=limit
-        )
-        warnings.extend(instance_warnings)
-        results.extend(instance_results)
-        if results:
-            break
+    skill_content = "\n\n---\n\n".join(
+        r["content"] for r in results if r.get("content")
+    )
 
-    payload = {
+    return {
         "run_uid": run_uid,
         "key": key,
         "results": results,
         "searched_instances": searched_instances,
-        "message": f"Found {len(results)} LaminDB matches for '{key}'.",
+        "message": f"Found {len(results)} skill(s).",
+        "skill_content": skill_content,
         "warnings": warnings,
     }
-    return payload

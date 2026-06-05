@@ -1,6 +1,59 @@
 from pathlib import Path
 
-from lag_cli.do_executor import execute_plan, extract_runnable_paths, find_plan_file
+from lag_cli.do_executor import (
+    execute_plan,
+    extract_runnable_paths,
+    find_plan_file,
+    fix_instance_slug,
+    strip_tracking_calls,
+)
+
+
+def test_fix_instance_slug_corrects_lamindb_org() -> None:
+    code = 'import lamindb as ln\nln.connect("lamindb/lamindata")\n'
+    out = fix_instance_slug(code)
+    assert 'ln.connect("laminlabs/lamindata")' in out
+    # the import statement must stay untouched
+    assert "import lamindb as ln" in out
+
+
+def test_fix_instance_slug_handles_single_quotes_and_spacing() -> None:
+    code = "ln.connect( 'lamindb/lamindata' )"
+    out = fix_instance_slug(code)
+    assert "'laminlabs/lamindata'" in out
+
+
+def test_fix_instance_slug_leaves_correct_slug_alone() -> None:
+    code = (
+        'ln.connect("laminlabs/lamindata")\nuser = "ishitajain9717/mutation-registry"'
+    )
+    assert fix_instance_slug(code) == code
+
+
+def test_strip_tracking_calls_handles_semicolon_form() -> None:
+    code = (
+        'import lamindb as ln; ln.connect("a/b"); ln.track(); '
+        "n = ln.Artifact.filter().count(); print(n); ln.finish();"
+    )
+    out = strip_tracking_calls(code)
+    assert "ln.track(" not in out
+    assert "ln.finish(" not in out
+    assert "ln.connect" in out
+    assert "ln.Artifact.filter().count()" in out
+
+
+def test_strip_tracking_calls_handles_newline_and_uid() -> None:
+    code = (
+        "import lamindb as ln\n"
+        'ln.connect("a/b")\n'
+        'ln.track("56SyqFc1nS6m")\n'
+        "print(1)\n"
+        "ln.finish()\n"
+    )
+    out = strip_tracking_calls(code)
+    assert "ln.track" not in out
+    assert "ln.finish" not in out
+    assert "print(1)" in out
 
 
 def test_extract_runnable_paths(tmp_path: Path) -> None:

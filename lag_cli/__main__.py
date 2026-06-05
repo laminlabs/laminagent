@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -9,10 +10,12 @@ import lamindb as ln
 from dotenv import load_dotenv
 from lamin_utils import logger
 
-from .agent import run_agent
+from .agent import resolve_skill_key, run_agent
+from .context import get_lamindb_skill
 from .do_executor import execute_plan, execute_runnable_paths, find_plan_file
 from .output_saver import save_generated_tool_files
 from .run_context import RunContext, create_run_uid
+from .run_report import sync_transform_source_from_agent
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
@@ -201,6 +204,53 @@ def _print_generated_tool_contents(paths: list[Path]) -> None:
         _secho("--- end generated tool ---", fg="black")
 
 
+def _write_trace_markdown(path: Path, payload: dict) -> None:
+    """Write a human-readable markdown trace so steps appear in lamin.ai."""
+    lines: list[str] = []
+    lines.append("# Agent Run Trace\n")
+    lines.append(f"**Run ID**: {payload.get('run_uid', '')}")
+    lines.append(f"**Model**: {payload.get('model', '')}")
+    lines.append(f"**Prompt**: {payload.get('prompt', '')}\n")
+    lines.append("---\n")
+
+    for event in payload.get("trace_events", []):
+        step = event.get("step", "?")
+        tool = event.get("tool")
+
+        if tool:
+            lines.append(f"## Step {step} — `{tool}`\n")
+            args = event.get("tool_args", {})
+            if tool == "execute_python":
+                code = args.get("code", "")
+                lines.append("**Code executed:**")
+                lines.append(f"```python\n{code}\n```")
+                result = event.get("tool_result", {})
+                exit_code = result.get("exit_code", "?")
+                stdout = (result.get("stdout") or "").strip()
+                stderr = (result.get("stderr") or "").strip()
+                lines.append(f"\n**exit_code**: `{exit_code}`")
+                if stdout:
+                    lines.append(f"\n**stdout:**\n```\n{stdout[-1000:]}\n```")
+                if stderr:
+                    lines.append(f"\n**stderr:**\n```\n{stderr[-1000:]}\n```")
+            elif tool == "write_python_script":
+                filename = args.get("filename", "")
+                lines.append(f"**File written**: `{filename}`")
+            else:
+                lines.append(f"**Args**: `{json.dumps(args)[:300]}`")
+                result = event.get("tool_result", {})
+                status = result.get("status", "ok")
+                lines.append(f"**Status**: `{status}`")
+        else:
+            model_text = (event.get("model_response") or {}).get("content", "")
+            if model_text:
+                lines.append(f"## Step {step} — Model reasoning\n")
+                lines.append(model_text[:500])
+        lines.append("")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def run_agent_mode(
     *,
     mode: str,
@@ -208,12 +258,20 @@ def run_agent_mode(
     output_file: Path | None,
     model: str,
     track_outputs: bool,
+    preloaded_skill_result: dict | None = None,
 ) -> dict[str, str | None]:
     workspace_env_path = Path("~/llms.env").expanduser()
     load_dotenv(dotenv_path=workspace_env_path)
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise click.ClickException("GEMINI_API_KEY not found in ~/llms.env")
+    if model.startswith("claude"):
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise click.ClickException("ANTHROPIC_API_KEY not found in ~/llms.env")
+    elif model.startswith("groq/"):
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise click.ClickException("GROQ_API_KEY not found in ~/llms.env")
+    else:
+        api_key = os.getenv("GEMINI_API_KEY") or ""
 
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
@@ -229,12 +287,63 @@ def run_agent_mode(
         model=model,
         track_outputs=track_outputs,
     )
+    _progress_log: list[str] = []
+
+    def _progress_and_log(msg: str) -> None:
+        _progress(msg)
+        _progress_log.append(f"→ {msg}")
+
     result = run_agent(
         api_key=api_key,
         run_context=run_context,
         output_file=output_path,
-        progress_callback=_progress,
+        progress_callback=_progress_and_log,
+        preloaded_skill_result=preloaded_skill_result,
     )
+
+    # log each agent step as a run param so they appear inline
+    # in the lamin.ai run report (params use INSERT not UPDATE — avoids Django bug)
+    if track_outputs:
+        try:
+            step_lines: list[str] = []
+            for event in result.get("trace_events", []):
+                step = event.get("step", "?")
+                tool = event.get("tool")
+                if not tool:
+                    continue
+                if tool == "execute_python":
+                    res = event.get("tool_result", {})
+                    exit_code = res.get("exit_code", "?")
+                    stdout_tail = (res.get("stdout") or "")[-300:].strip()
+                    stderr_tail = (res.get("stderr") or "")[-300:].strip()
+                    detail = f"exit_code={exit_code}"
+                    if stdout_tail:
+                        detail += f" | stdout: {stdout_tail}"
+                    if stderr_tail and exit_code != 0:
+                        detail += f" | stderr: {stderr_tail}"
+                    step_lines.append(f"step {step} execute_python: {detail}")
+                elif tool == "write_python_script":
+                    fname = event.get("tool_args", {}).get("filename", "")
+                    step_lines.append(f"step {step} write_python_script: {fname}")
+                else:
+                    step_lines.append(f"step {step} {tool}")
+            if step_lines:
+                params: dict[str, str] = {
+                    "agent_steps": "\n".join(step_lines),
+                    "model": model,
+                    "prompt": prompt[:200],
+                }
+                ln.context.run.params.update(params)
+            _echo_info("run params updated with agent steps")
+        except Exception as _param_exc:
+            _echo_info(f"could not update run params: {_param_exc}")
+
+    if track_outputs and mode == "plan":
+        try:
+            sync_transform_source_from_agent(result)
+            _echo_info("run transform source updated from agent script")
+        except Exception as _source_exc:
+            _echo_info(f"could not update transform source: {_source_exc}")
 
     generated_file = result.get("generated_file")
     generated_files = [
@@ -324,7 +433,9 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
     help="Switch to planning mode (plan generation).",
 )
 @click.option("--output-file", type=click.Path(path_type=Path), default=None)
-@click.option("--model", type=str, default="gemini-flash-latest", show_default=True)
+@click.option(
+    "--model", type=str, default="groq/llama-3.3-70b-versatile", show_default=True
+)
 @click.option(
     "--plan-file",
     type=click.Path(path_type=Path, exists=True),
@@ -343,7 +454,6 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
     callback=_project_option_callback,
     help="Project name to set as LAMIN_CURRENT_PROJECT for the initiated run.",
 )
-@ln.flow("wDJpT3xdqjY8")
 def main(
     prompt: str,
     plan_mode: bool,
@@ -353,8 +463,57 @@ def main(
     no_track: bool,
     project: str | None,
 ) -> None:
-    """LAG CLI."""
+    """LAG CLI.
+
+    Skills are loaded here, BEFORE the tracked run starts. We use ln.DB() to fetch
+    remote skills from laminlabs/biomed-skills without calling ln.connect(). This
+    keeps the tracked run on a single stable instance and prevents the Django
+    re-initialization crash (the BigAutoField issue).
+    """
     _warn_if_missing_project(project)
+
+    preloaded_skill_result: dict | None = None
+    if plan_mode:
+        skill_key = resolve_skill_key(prompt)
+        preloaded_skill_result = get_lamindb_skill(key=skill_key)
+        skill_content = preloaded_skill_result.get("skill_content", "")
+        if skill_content:
+            loaded_keys = [r["key"] for r in preloaded_skill_result.get("results", [])]
+            _progress(f"skills loaded: {loaded_keys}")
+        else:
+            _progress(
+                f"no skills found — warnings: {preloaded_skill_result.get('warnings', [])}"
+            )
+
+    _run_tracked(
+        prompt=prompt,
+        plan_mode=plan_mode,
+        output_file=output_file,
+        model=model,
+        plan_file=plan_file,
+        no_track=no_track,
+        project=project,
+        preloaded_skill_result=preloaded_skill_result,
+    )
+
+
+@ln.flow()
+def _run_tracked(
+    *,
+    prompt: str,
+    plan_mode: bool,
+    output_file: Path | None,
+    model: str,
+    plan_file: Path | None,
+    no_track: bool,
+    project: str | None,
+    preloaded_skill_result: dict | None,
+) -> None:
+    """The tracked portion of the run.
+
+    Created after skills are already loaded, so no instance-switching happens
+    inside the @ln.flow run.
+    """
     if plan_mode:
         outcome = run_agent_mode(
             mode="plan",
@@ -362,6 +521,7 @@ def main(
             output_file=output_file,
             model=model,
             track_outputs=not no_track,
+            preloaded_skill_result=preloaded_skill_result,
         )
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
@@ -408,5 +568,20 @@ def main(
         _secho(str(outcome["final_text"]), dim=True)
 
 
+def _safe_main() -> None:
+    """Suppress the Django 5.2 + BigAutoField cleanup crash from lamindb's @ln.track()."""
+    try:
+        main()
+    except Exception as _e:
+        if "BigAutoField" in str(_e) or "Unsupported lookup" in str(_e):
+            click.echo(
+                "! run metadata cleanup failed (lamindb/Django version mismatch)"
+                " — curation output is unaffected",
+                err=True,
+            )
+        else:
+            raise
+
+
 if __name__ == "__main__":
-    main()
+    _safe_main()

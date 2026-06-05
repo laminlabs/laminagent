@@ -1,7 +1,77 @@
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from lag_cli.agent import _dispatch_tool, _looks_like_wrapper_runner, run_agent
+from lag_cli.agent import (
+    _dispatch_tool,
+    _looks_like_wrapper_runner,
+    resolve_skill_key,
+    run_agent,
+)
 from lag_cli.run_context import RunContext
+
+
+def test_resolve_skill_key_query_instance() -> None:
+    assert (
+        resolve_skill_key(
+            "Count total artifacts and transforms in ishitajain9717/mutation-registry."
+        )
+        == "query-instance"
+    )
+
+
+def test_resolve_skill_key_analysis_not_query_instance() -> None:
+    prompt = (
+        "Connect to ishitajain9717/mutation-registry. Run cell type annotation "
+        "with celltypist and pathway enrichment with gseapy on "
+        "ln.core.datasets.anndata_seurat_ifnb(preprocess=False, populate_registries=True). "
+        "Link pathways via schema.pathways.set(). Done when annotated artifact is saved."
+    )
+    assert resolve_skill_key(prompt) == "analysis-registries"
+
+
+def test_resolve_skill_key_bulkrna_not_query_instance() -> None:
+    prompt = (
+        "Curate ln.core.datasets.file_tsv_rnaseq_nfcore_salmon_merged_gene_counts(). "
+        "Save the curated artifact when validation passes."
+    )
+    assert resolve_skill_key(prompt) == "curate-bulkrna"
+
+
+def test_resolve_skill_key_count_matrix_phrase_routes_to_bulkrna() -> None:
+    # regression: "gene count matrix ... curated artifact" must not route to
+    # query-instance just because it contains "count" and "artifact"
+    prompt = (
+        "Ingest the nf-core salmon merged bulk RNA-seq gene count matrix, reshape it "
+        "into a tidy AnnData, validate it, and save the curated artifact with labels."
+    )
+    assert resolve_skill_key(prompt) == "curate-bulkrna"
+
+
+def test_resolve_skill_key_how_many_routes_to_query_instance() -> None:
+    assert (
+        resolve_skill_key("How many transforms and artifacts are in this instance?")
+        == "query-instance"
+    )
+
+
+def test_resolve_skill_key_scrnaseq_not_bulkrna() -> None:
+    # regression: "scRNA-seq" contains the substring "rna-seq" and must NOT
+    # route to bulk RNA curation
+    prompt = (
+        "Curate the Conde 2022 human immune cells scRNA-seq dataset with "
+        "anndata_human_immune_cells() and seed a collection scrna/collection1."
+    )
+    assert resolve_skill_key(prompt) == "curate-scrna"
+
+
+def test_resolve_skill_key_standardize_append_beats_scrna() -> None:
+    assert (
+        resolve_skill_key(
+            "Standardize this scRNA dataset and append it to the collection."
+        )
+        == "standardize-append-scrna"
+    )
 
 
 def test_detects_subprocess_wrapper_runner() -> None:
@@ -166,6 +236,21 @@ def test_fails_fast_when_explicit_tool_key_not_found_in_do_mode(monkeypatch) -> 
     assert "Aborting without generating a new tool." in str(result["message"])
 
 
+def _fake_tool_call_message(name: str, args: dict) -> SimpleNamespace:
+    return SimpleNamespace(
+        content="",
+        tool_calls=[
+            SimpleNamespace(
+                id="call-1",
+                function=SimpleNamespace(
+                    name=name,
+                    arguments=json.dumps(args),
+                ),
+            )
+        ],
+    )
+
+
 def test_run_agent_stops_after_fatal_tool_error(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
@@ -174,24 +259,15 @@ def test_run_agent_stops_after_fatal_tool_error(monkeypatch) -> None:
         model="m",
     )
 
-    tool_response = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "functionCall": {
-                                "name": "get_lamindb_skill",
-                                "args": {"key": "test-lag/create_fasta.py"},
-                            }
-                        }
-                    ]
-                }
-            }
-        ]
-    }
     monkeypatch.setattr(
-        "lag_cli.agent._post_generate_content", lambda **_kwargs: tool_response
+        "lag_cli.agent.get_lamindb_skill",
+        lambda **_kwargs: {"results": [], "skill_content": "", "warnings": []},
+    )
+    monkeypatch.setattr(
+        "lag_cli.agent._call_llm",
+        lambda **_kwargs: _fake_tool_call_message(
+            "get_lamindb_skill", {"key": "test-lag/create_fasta.py"}
+        ),
     )
     monkeypatch.setattr(
         "lag_cli.agent._dispatch_tool",
@@ -254,24 +330,15 @@ def test_run_agent_stops_after_short_circuit_lookup(monkeypatch) -> None:
         prompt="rerun",
         model="m",
     )
-    tool_response = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "functionCall": {
-                                "name": "get_lamindb_skill",
-                                "args": {"key": "test-lag/create_fasta.py"},
-                            }
-                        }
-                    ]
-                }
-            }
-        ]
-    }
     monkeypatch.setattr(
-        "lag_cli.agent._post_generate_content", lambda **_kwargs: tool_response
+        "lag_cli.agent.get_lamindb_skill",
+        lambda **_kwargs: {"results": [], "skill_content": "", "warnings": []},
+    )
+    monkeypatch.setattr(
+        "lag_cli.agent._call_llm",
+        lambda **_kwargs: _fake_tool_call_message(
+            "get_lamindb_skill", {"key": "test-lag/create_fasta.py"}
+        ),
     )
     monkeypatch.setattr(
         "lag_cli.agent._dispatch_tool",
