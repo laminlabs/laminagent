@@ -17,6 +17,6 @@ def lint(session: nox.Session) -> None:
 
 
 @nox.session()
-def install(session):
+def build(session):
     run(session, "uv pip install --system litellm")
     run_pytest(session)
