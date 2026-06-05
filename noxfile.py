@@ -6,6 +6,9 @@ from laminci.nox import run_pre_commit, run_pytest
 # directory in every github action runner
 # this also allows to break out an installation section
 nox.options.default_venv_backend = "none"
+from laminci.nox import (
+    run,
+)
 
 
 @nox.session
@@ -14,12 +17,6 @@ def lint(session: nox.Session) -> None:
 
 
 @nox.session()
-def build(session):
-    session.install("litellm")
-    run_pytest(session)
-
-
-@nox.session()
 def install(session):
-    session.install("litellm")
+    run(session, "uv pip install --system litellm")
     run_pytest(session)

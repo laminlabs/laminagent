@@ -14,7 +14,7 @@ from lag_cli.run_context import RunContext
 def test_resolve_skill_key_query_instance() -> None:
     assert (
         resolve_skill_key(
-            "Count total artifacts and transforms in ishitajain9717/mutation-registry."
+            "Count total artifacts and transforms in test-owner/test-instance."
         )
         == "query-instance"
     )
@@ -22,7 +22,7 @@ def test_resolve_skill_key_query_instance() -> None:
 
 def test_resolve_skill_key_analysis_not_query_instance() -> None:
     prompt = (
-        "Connect to ishitajain9717/mutation-registry. Run cell type annotation "
+        "Connect to test-owner/test-instance. Run cell type annotation "
         "with celltypist and pathway enrichment with gseapy on "
         "ln.core.datasets.anndata_seurat_ifnb(preprocess=False, populate_registries=True). "
         "Link pathways via schema.pathways.set(). Done when annotated artifact is saved."

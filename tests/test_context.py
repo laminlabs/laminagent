@@ -52,7 +52,7 @@ def test_get_lamindb_skill_dedupes_same_key(monkeypatch) -> None:
         "setup",
         SimpleNamespace(
             settings=SimpleNamespace(
-                instance=SimpleNamespace(slug="ishitajain9717/mutation-registry")
+                instance=SimpleNamespace(slug="test-owner/test-instance")
             )
         ),
     )

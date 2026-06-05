@@ -24,9 +24,7 @@ def test_fix_instance_slug_handles_single_quotes_and_spacing() -> None:
 
 
 def test_fix_instance_slug_leaves_correct_slug_alone() -> None:
-    code = (
-        'ln.connect("laminlabs/lamindata")\nuser = "ishitajain9717/mutation-registry"'
-    )
+    code = 'ln.connect("laminlabs/lamindata")\nuser = "test-owner/test-instance"'
     assert fix_instance_slug(code) == code
 
 
