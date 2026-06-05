@@ -46,7 +46,6 @@ def test_get_lamindb_skill_connects_to_biomed_skills(monkeypatch) -> None:
 
 
 def test_get_lamindb_skill_dedupes_same_key(monkeypatch) -> None:
-    monkeypatch.setattr(context.ln, "connect", lambda slug: None)
     monkeypatch.setattr(
         context.ln,
         "setup",
@@ -74,7 +73,11 @@ def test_get_lamindb_skill_dedupes_same_key(monkeypatch) -> None:
             # two versions of the same key
             return [_make_artifact("v1"), _make_artifact("v2")]
 
-    monkeypatch.setattr(context.ln, "Artifact", _FakeArtifactQuery())
+    class _FakeDB:  # ← define first
+        def __init__(self, slug):
+            self.Artifact = _FakeArtifactQuery()
+
+    monkeypatch.setattr(context.ln, "DB", _FakeDB)
 
     import pathlib
 
