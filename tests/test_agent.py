@@ -26,7 +26,7 @@ ln.Artifact("hello.txt").save()
 def test_rejects_additional_runnable_filename_in_do_mode() -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="do",
+        mode="exec",
         prompt="p",
         model="m",
     )
@@ -46,7 +46,7 @@ def test_allows_overwriting_existing_runnable_filename_in_do_mode(
 ) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="do",
+        mode="exec",
         prompt="p",
         model="m",
     )
@@ -69,7 +69,7 @@ def test_allows_overwriting_existing_runnable_filename_in_do_mode(
 def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="plan",
+        mode="eng",
         prompt="p",
         model="m",
     )
@@ -94,7 +94,7 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
 def test_defaults_notebook_extension_by_tool_type(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="plan",
+        mode="eng",
         prompt="p",
         model="m",
     )
@@ -121,7 +121,7 @@ def test_defaults_notebook_extension_by_tool_type(monkeypatch) -> None:
 def test_plan_mode_enforces_explicit_key_filename_reuse() -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="plan",
+        mode="eng",
         prompt="make new version of test-lag/create_fasta.py",
         model="m",
     )
@@ -139,7 +139,7 @@ def test_plan_mode_enforces_explicit_key_filename_reuse() -> None:
 def test_fails_fast_when_explicit_tool_key_not_found_in_do_mode(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="do",
+        mode="exec",
         prompt="rerun tool",
         model="m",
     )
@@ -169,7 +169,7 @@ def test_fails_fast_when_explicit_tool_key_not_found_in_do_mode(monkeypatch) -> 
 def test_run_agent_stops_after_fatal_tool_error(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="do",
+        mode="exec",
         prompt="rerun",
         model="m",
     )
@@ -215,7 +215,7 @@ def test_run_agent_stops_after_fatal_tool_error(monkeypatch) -> None:
 def test_short_circuits_when_explicit_tool_key_found(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="do",
+        mode="exec",
         prompt="rerun tool",
         model="m",
     )
@@ -250,7 +250,7 @@ def test_short_circuits_when_explicit_tool_key_found(monkeypatch) -> None:
 def test_run_agent_stops_after_short_circuit_lookup(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="do",
+        mode="exec",
         prompt="rerun",
         model="m",
     )

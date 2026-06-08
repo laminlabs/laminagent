@@ -63,7 +63,7 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
             },
         },
     ]
-    if mode == "plan":
+    if mode == "eng":
         declarations.append(
             {
                 "name": "write_from_template",
@@ -78,7 +78,7 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
                 },
             }
         )
-    if mode == "plan":
+    if mode == "eng":
         declarations.append(
             {
                 "name": "write_jupyter_notebook",
@@ -103,7 +103,7 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
                 },
             }
         )
-    if mode in {"plan", "do"}:
+    if mode in {"eng", "exec"}:
         declarations.append(
             {
                 "name": "write_python_script",
@@ -270,7 +270,7 @@ def _dispatch_tool(
             run_uid=run_context.run_uid,
         )
         if (
-            run_context.mode == "do"
+            run_context.mode == "exec"
             and _is_explicit_tool_key(key)
             and not result.get("results")
         ):
@@ -286,7 +286,7 @@ def _dispatch_tool(
                 ),
             }
         if (
-            run_context.mode == "do"
+            run_context.mode == "exec"
             and _is_explicit_tool_key(key)
             and result.get("results")
         ):
@@ -316,7 +316,7 @@ def _dispatch_tool(
             args.get("filename") or ""
         ).strip() or _default_filename_for_tool(name, default_output_file)
         code = str(args.get("code", ""))
-        if run_context.mode == "plan":
+        if run_context.mode == "eng":
             explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
             if len(explicit_keys) == 1 and filename != explicit_keys[0]:
                 return {
@@ -328,7 +328,7 @@ def _dispatch_tool(
                     ),
                     "run_uid": run_context.run_uid,
                 }
-        if run_context.mode == "do":
+        if run_context.mode == "exec":
             existing_runnables = [
                 path_str
                 for path_str in existing_generated_files
@@ -345,7 +345,7 @@ def _dispatch_tool(
                     ),
                     "run_uid": run_context.run_uid,
                 }
-        if run_context.mode == "do" and _looks_like_wrapper_runner(
+        if run_context.mode == "exec" and _looks_like_wrapper_runner(
             code, existing_generated_files
         ):
             return {
@@ -366,7 +366,7 @@ def _dispatch_tool(
         filename = str(
             args.get("filename") or ""
         ).strip() or _default_filename_for_tool(name, default_output_file)
-        if run_context.mode == "plan":
+        if run_context.mode == "eng":
             explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
             if len(explicit_keys) == 1 and filename != explicit_keys[0]:
                 return {
@@ -410,7 +410,7 @@ def run_agent(
     progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     system_instruction = (
-        PLAN_SYSTEM_INSTRUCTION if run_context.mode == "plan" else DO_SYSTEM_INSTRUCTION
+        PLAN_SYSTEM_INSTRUCTION if run_context.mode == "eng" else DO_SYSTEM_INSTRUCTION
     )
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
