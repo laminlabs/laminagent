@@ -24,17 +24,32 @@ def _ensure_tracked_python_code(code: str) -> str:
         ),
         None,
     )
+    connect_idx = next(
+        (
+            idx
+            for idx, line in enumerate(lines)
+            if line.startswith("ln.connect")
+        ),
+        None,
+    )
     if import_idx is None:
         lines.insert(0, "import lamindb as ln")
         import_idx = 0
 
     if not has_track:
-        lines.insert(import_idx + 1, "ln.track()")
-
+        connect_idx = next(
+            (
+                idx
+                for idx, line in enumerate(lines)
+                if line.startswith("ln.connect")
+            ),
+            None,
+        )
+        insert_at = (connect_idx if connect_idx is not None else import_idx) + 1
+        lines.insert(insert_at, "ln.track()")
     if not has_finish:
         lines.append("")
         lines.append("ln.finish()")
-
     return "\n".join(lines) + "\n"
 
 
