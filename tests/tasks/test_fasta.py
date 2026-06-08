@@ -15,7 +15,7 @@ INSTANCE_SLUG = "laminlabs/lamindata"
 # versioning prompt), exactly like the CLI's @ln.flow("wDJpT3xdqjY8").
 FLOW_UID = "fastatest001"
 PROMPT = (
-    "Write a single runnable Python script that does exactly this, IN THIS ORDER:\n"
+    "Write a single runnable Python script with name test_lag/create_protein_fasta.py that does exactly this, IN THIS ORDER:\n"
     "1. import lamindb as ln\n"
     f"2. ln.connect('{INSTANCE_SLUG}')\n"
     "3. ln.track()  # MUST be here, BEFORE writing/saving anything\n"
