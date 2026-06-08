@@ -25,11 +25,7 @@ def _ensure_tracked_python_code(code: str) -> str:
         None,
     )
     connect_idx = next(
-        (
-            idx
-            for idx, line in enumerate(lines)
-            if line.startswith("ln.connect")
-        ),
+        (idx for idx, line in enumerate(lines) if line.startswith("ln.connect")),
         None,
     )
     if import_idx is None:
@@ -38,11 +34,7 @@ def _ensure_tracked_python_code(code: str) -> str:
 
     if not has_track:
         connect_idx = next(
-            (
-                idx
-                for idx, line in enumerate(lines)
-                if line.startswith("ln.connect")
-            ),
+            (idx for idx, line in enumerate(lines) if line.startswith("ln.connect")),
             None,
         )
         insert_at = (connect_idx if connect_idx is not None else import_idx) + 1

@@ -4,7 +4,6 @@ from pathlib import Path
 import lamindb as ln
 import pytest
 from dotenv import load_dotenv
-
 from lag_cli.agent import run_agent
 from lag_cli.do_executor import execute_runnable_paths
 from lag_cli.run_context import RunContext, create_run_uid
@@ -88,7 +87,9 @@ def test_agent_saves_artifact(tmp_path, monkeypatch, setup_lamindb) -> None:
         )
 
         generated_files = [
-            f for f in agent_result.get("generated_files", []) if isinstance(f, str) and f
+            f
+            for f in agent_result.get("generated_files", [])
+            if isinstance(f, str) and f
         ]
         runnable_paths = _runnable_paths(generated_files, tmp_path)
         if not runnable_paths:
@@ -107,8 +108,7 @@ def test_agent_saves_artifact(tmp_path, monkeypatch, setup_lamindb) -> None:
         failures = [
             event
             for event in exec_result["trace_events"]
-            if event.get("event") == "script_executed"
-            and event.get("exit_code") != 0
+            if event.get("event") == "script_executed" and event.get("exit_code") != 0
         ]
         if failures:
             status["last_error"] = f"script failed: {failures}"
@@ -118,7 +118,7 @@ def test_agent_saves_artifact(tmp_path, monkeypatch, setup_lamindb) -> None:
 
     try:
         _run_tracked()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Known lamindb + Django 5.2 flow-teardown crash (same one the CLI's
         # _safe_main swallows). The actual work already ran before teardown.
         if "Unsupported lookup" not in str(exc) and "BigAutoField" not in str(exc):
