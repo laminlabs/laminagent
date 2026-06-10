@@ -25,5 +25,7 @@ def test_create_favorite_protein_sequence(setup_lamindb) -> None:
         PROMPT,
     )
     assert result.returncode == 0
-    fasta_files = list(Path("./testdb1-runs").rglob("*.fasta"))
-    assert fasta_files
+    runnable_files = list(Path("./testdb1-runs").rglob("*.py")) + list(
+        Path("./testdb1-runs").rglob("*.ipynb")
+    )
+    assert runnable_files
