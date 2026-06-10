@@ -82,7 +82,7 @@ lint.ignore = [
     "D103",
     # Missing docstring in public package
     "D104",
-    # __magic__ methods are are often self-explanatory, allow missing docstrings
+    # __magic__ methods are are often self-extoolatory, allow missing docstrings
     "D105",
     # Missing docstring in public nested class
     "D106",

@@ -21,10 +21,10 @@ if TYPE_CHECKING:
     from .run_context import RunContext
 
 PLAN_SYSTEM_INSTRUCTION = (
-    "You are a tool authoring agent. In --plan mode, create or update runnable "
+    "You are a tool authoring agent. In --tool mode, create or update runnable "
     "tool files (.py/.ipynb) that satisfy the prompt. If the prompt references an "
     "explicit tool key/path, update that exact file instead of creating a new name. "
-    "You may read skills/query LaminDB for context, but do not write markdown plans."
+    "You may read skills/query LaminDB for context, but do not write markdown tools."
 )
 
 DO_SYSTEM_INSTRUCTION = (
@@ -63,7 +63,7 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
             },
         },
     ]
-    if mode == "eng":
+    if mode == "tool":
         declarations.append(
             {
                 "name": "write_from_template",
@@ -78,7 +78,7 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
                 },
             }
         )
-    if mode == "eng":
+    if mode == "tool":
         declarations.append(
             {
                 "name": "write_jupyter_notebook",
@@ -103,7 +103,7 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
                 },
             }
         )
-    if mode in {"eng", "exec"}:
+    if mode in {"tool", "exec"}:
         declarations.append(
             {
                 "name": "write_python_script",
@@ -316,7 +316,7 @@ def _dispatch_tool(
             args.get("filename") or ""
         ).strip() or _default_filename_for_tool(name, default_output_file)
         code = str(args.get("code", ""))
-        if run_context.mode == "eng":
+        if run_context.mode == "tool":
             explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
             if len(explicit_keys) == 1 and filename != explicit_keys[0]:
                 return {
@@ -366,7 +366,7 @@ def _dispatch_tool(
         filename = str(
             args.get("filename") or ""
         ).strip() or _default_filename_for_tool(name, default_output_file)
-        if run_context.mode == "eng":
+        if run_context.mode == "tool":
             explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
             if len(explicit_keys) == 1 and filename != explicit_keys[0]:
                 return {
@@ -410,7 +410,7 @@ def run_agent(
     progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     system_instruction = (
-        PLAN_SYSTEM_INSTRUCTION if run_context.mode == "eng" else DO_SYSTEM_INSTRUCTION
+        PLAN_SYSTEM_INSTRUCTION if run_context.mode == "tool" else DO_SYSTEM_INSTRUCTION
     )
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"

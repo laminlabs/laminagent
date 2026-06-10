@@ -118,7 +118,7 @@ def write_jupyter_notebook(
     }
 
 
-def write_markdown_plan(
+def write_markdown_tool(
     *,
     markdown: str,
     filename: str,

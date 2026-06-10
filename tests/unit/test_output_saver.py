@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 def test_save_generated_tool_files_uses_lamin_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    plan = tmp_path / "plan.md"
+    tool = tmp_path / "tool.md"
     script = tmp_path / "task.py"
-    plan.write_text("# plan\n", encoding="utf-8")
+    tool.write_text("# tool\n", encoding="utf-8")
     script.write_text("print('ok')\n", encoding="utf-8")
 
     calls: list[list[str]] = []
@@ -26,7 +26,7 @@ def test_save_generated_tool_files_uses_lamin_save(
         return SimpleNamespace(returncode=0, stderr="")
 
     monkeypatch.setattr(output_saver.subprocess, "run", _fake_run)
-    output_saver.save_generated_tool_files([str(plan), str(script), str(plan)])
+    output_saver.save_generated_tool_files([str(tool), str(script), str(tool)])
 
     assert calls == [["lamin", "save", str(script)]]
 
@@ -51,8 +51,8 @@ def test_save_generated_tool_files_raises_on_failed_save(
 def test_save_generated_tool_files_skips_non_runnable_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    plan = tmp_path / "plan.md"
-    plan.write_text("# plan\n", encoding="utf-8")
+    tool = tmp_path / "tool.md"
+    tool.write_text("# tool\n", encoding="utf-8")
     calls: list[list[str]] = []
 
     def _fake_run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
@@ -60,6 +60,6 @@ def test_save_generated_tool_files_skips_non_runnable_files(
         return SimpleNamespace(returncode=0, stderr="")
 
     monkeypatch.setattr(output_saver.subprocess, "run", _fake_run)
-    output_saver.save_generated_tool_files([str(plan)])
+    output_saver.save_generated_tool_files([str(tool)])
 
     assert calls == []

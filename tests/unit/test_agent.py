@@ -69,7 +69,7 @@ def test_allows_overwriting_existing_runnable_filename_in_do_mode(
 def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="eng",
+        mode="tool",
         prompt="p",
         model="m",
     )
@@ -84,17 +84,17 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
         name="write_python_script",
         args={"code": "print('x')"},
         run_context=run_context,
-        default_output_file=Path("plan_run.md"),
+        default_output_file=Path("tool_run.md"),
         existing_generated_files=[],
     )
     assert captured["filename"].endswith(".py")
-    assert captured["filename"] == "plan_run.py"
+    assert captured["filename"] == "tool_run.py"
 
 
 def test_defaults_notebook_extension_by_tool_type(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="eng",
+        mode="tool",
         prompt="p",
         model="m",
     )
@@ -111,17 +111,17 @@ def test_defaults_notebook_extension_by_tool_type(monkeypatch) -> None:
         name="write_jupyter_notebook",
         args={"cells": [{"type": "code", "content": "x=1"}]},
         run_context=run_context,
-        default_output_file=Path("plan_run.md"),
+        default_output_file=Path("tool_run.md"),
         existing_generated_files=[],
     )
     assert captured["filename"].endswith(".ipynb")
-    assert captured["filename"] == "plan_run.ipynb"
+    assert captured["filename"] == "tool_run.ipynb"
 
 
-def test_plan_mode_enforces_explicit_key_filename_reuse() -> None:
+def test_tool_mode_enforces_explicit_key_filename_reuse() -> None:
     run_context = RunContext(
         run_uid="run-1",
-        mode="eng",
+        mode="tool",
         prompt="make new version of test-lag/create_fasta.py",
         model="m",
     )
