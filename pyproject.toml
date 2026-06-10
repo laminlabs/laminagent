@@ -17,6 +17,7 @@ dependencies = [
     "nbformat",
     "python-dotenv",
     "requests",
+    "bionty"
 ]
 
 [project.scripts]
