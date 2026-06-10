@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from pathlib import Path
 
 PROMPT = (
     "Write your favorite protein sequence in a fasta file and save it as an artifact"
@@ -17,9 +18,12 @@ def run_lag_cli(run_dir: str, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_create_favorite_protein_sequence(setup_lamindb) -> None:
-    run_lag_cli(
+    result = run_lag_cli(
         "./testdb1-runs",
         "--tool",
         "--prompt",
         PROMPT,
     )
+    assert result.returncode == 0
+    fasta_files = list(Path("./testdb1-runs").rglob("*.fasta"))
+    assert fasta_files
