@@ -14,9 +14,7 @@ def lint(session: nox.Session) -> None:
 
 
 @nox.session()
-def test(session: nox.Session) -> None:
-    session.run("pip", "install", "nbproject", external=True)
+@nox.parametrize("group", ["unit", "cli"])
+def test(session: nox.Session, group: str) -> None:
     coverage_args = ["--cov=lag_cli", "--cov-append", "--cov-report=term-missing"]
-    for group in ("unit", "tasks"):
-        session.run("pytest", "-s", f"tests/{group}", *coverage_args)
-    session.run("coverage", "xml")
+    session.run("pytest", "-s", f"tests/{group}", *coverage_args)

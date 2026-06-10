@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     env:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
       GITHUB_TOKEN: ${{ secrets.LAMIN_BUILD_DOCS }}
@@ -16,9 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            python: "3.12"
+        os: [ubuntu-latest]
+        python: ["3.12"]
+        group: [unit, cli]
     timeout-minutes: 15
 
     steps:
@@ -35,4 +35,4 @@ jobs:
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
       - run: nox -s lint
       - run: uv pip install --system -e .[dev]
-      - run: nox -s test
+      - run: nox -s "test(group='${{ matrix.group }}')"
