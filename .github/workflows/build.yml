@@ -35,4 +35,4 @@ jobs:
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
       - run: nox -s lint
       - run: uv pip install --system -e .[dev]
-      - run: nox -s build
+      - run: nox -s test
