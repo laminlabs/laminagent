@@ -15,4 +15,5 @@ def lint(session: nox.Session) -> None:
 
 @nox.session()
 def build(session):
+    session.run("pip", "install", "nbproject", external=True)
     run_pytest(session)
