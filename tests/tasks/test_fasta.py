@@ -16,7 +16,7 @@ def run_lag_cli(run_dir: str, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_create_favorite_protein_sequence() -> None:
+def test_create_favorite_protein_sequence(setup_lamindb) -> None:
     run_lag_cli(
         "./testdb1-runs",
         "--tool",
