@@ -5,7 +5,7 @@ on:
     branches: [main, staging]
 
 jobs:
-  build:
+  test:
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
