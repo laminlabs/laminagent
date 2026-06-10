@@ -12,7 +12,7 @@ def run_lag_cli(run_dir: str, *args: str) -> subprocess.CompletedProcess[str]:
         cwd=run_dir,
         capture_output=True,
         text=True,
-        check=False,
+        check=True,
     )
 
 
