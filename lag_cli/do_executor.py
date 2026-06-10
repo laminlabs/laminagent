@@ -12,17 +12,17 @@ import nbformat
 RUN_UID_ENV_VAR = "LAMIN_INITIATED_BY_RUN_UID"
 
 
-def find_plan_file(explicit_plan_file: Path | None = None) -> Path | None:
-    """Find an explicit or best candidate markdown plan file."""
-    if explicit_plan_file is not None:
-        return explicit_plan_file.resolve()
+def find_tool_file(explicit_tool_file: Path | None = None) -> Path | None:
+    """Find an explicit or best candidate markdown tool file."""
+    if explicit_tool_file is not None:
+        return explicit_tool_file.resolve()
 
-    direct = Path("plan.md")
+    direct = Path("tool.md")
     if direct.exists():
         return direct.resolve()
 
     candidates = sorted(
-        Path().glob("plan_*.md"),
+        Path().glob("tool_*.md"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -31,15 +31,15 @@ def find_plan_file(explicit_plan_file: Path | None = None) -> Path | None:
     return None
 
 
-def extract_runnable_paths(plan_text: str, plan_dir: Path) -> list[Path]:
-    """Extract python scripts and notebooks from markdown plan text."""
+def extract_runnable_paths(tool_text: str, tool_dir: Path) -> list[Path]:
+    """Extract python scripts and notebooks from markdown tool text."""
     candidates: list[str] = []
     seen: set[str] = set()
 
-    for match in re.finditer(r"`([^`]+\.(?:py|ipynb))`", plan_text):
+    for match in re.finditer(r"`([^`]+\.(?:py|ipynb))`", tool_text):
         candidates.append(match.group(1))
 
-    for line in plan_text.splitlines():
+    for line in tool_text.splitlines():
         stripped = line.strip().lstrip("-* ").strip()
         if (
             stripped.endswith(".py") or stripped.endswith(".ipynb")
@@ -53,7 +53,7 @@ def extract_runnable_paths(plan_text: str, plan_dir: Path) -> list[Path]:
         seen.add(candidate)
         path = Path(candidate)
         if not path.is_absolute():
-            path = (plan_dir / path).resolve()
+            path = (tool_dir / path).resolve()
         paths.append(path)
     return paths
 
@@ -109,17 +109,17 @@ def _execute_notebook(notebook_path: Path, run_uid: str) -> dict[str, Any]:
     }
 
 
-def execute_plan(*, prompt: str, plan_file: Path, run_uid: str) -> dict[str, Any]:
-    plan_text = plan_file.read_text(encoding="utf-8")
-    runnable_paths = extract_runnable_paths(plan_text, plan_file.parent)
+def execute_tool(*, prompt: str, tool_file: Path, run_uid: str) -> dict[str, Any]:
+    tool_text = tool_file.read_text(encoding="utf-8")
+    runnable_paths = extract_runnable_paths(tool_text, tool_file.parent)
     payload = execute_runnable_paths(
         prompt=prompt,
         runnable_paths=runnable_paths,
         run_uid=run_uid,
-        source=str(plan_file),
+        source=str(tool_file),
     )
     if not runnable_paths:
-        payload["final_text"] = "No runnable script/notebook paths found in the plan."
+        payload["final_text"] = "No runnable script/notebook paths found in the tool."
     else:
         failed = [
             event
@@ -128,7 +128,7 @@ def execute_plan(*, prompt: str, plan_file: Path, run_uid: str) -> dict[str, Any
             and event.get("exit_code") != 0
         ]
         payload["final_text"] = (
-            f"Executed {len(runnable_paths)} runnables from plan; {len(failed)} failed."
+            f"Executed {len(runnable_paths)} runnables from tool; {len(failed)} failed."
         )
     return payload
 

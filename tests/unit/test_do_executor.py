@@ -1,30 +1,30 @@
 from pathlib import Path
 
-from lag_cli.do_executor import execute_plan, extract_runnable_paths, find_plan_file
+from lag_cli.do_executor import execute_tool, extract_runnable_paths, find_tool_file
 
 
 def test_extract_runnable_paths(tmp_path: Path) -> None:
-    plan_text = """
+    tool_text = """
     - run `scripts/a.py`
     - scripts/b.py
     - notebooks/c.ipynb
     """
-    paths = extract_runnable_paths(plan_text, tmp_path)
+    paths = extract_runnable_paths(tool_text, tmp_path)
     assert len(paths) == 3
     assert paths[0].name == "a.py"
     assert paths[1].name == "b.py"
     assert paths[2].name == "c.ipynb"
 
 
-def test_execute_plan_runs_python_scripts(tmp_path: Path) -> None:
+def test_execute_tool_runs_python_scripts(tmp_path: Path) -> None:
     script = tmp_path / "hello.py"
     script.write_text("print('hello from script')\n", encoding="utf-8")
-    plan = tmp_path / "plan.md"
-    plan.write_text(f"- run `{script.name}`\n", encoding="utf-8")
+    tool = tmp_path / "tool.md"
+    tool.write_text(f"- run `{script.name}`\n", encoding="utf-8")
 
-    result = execute_plan(
-        prompt="execute this plan",
-        plan_file=plan,
+    result = execute_tool(
+        prompt="execute this tool",
+        tool_file=tool,
         run_uid="test-run",
     )
 
@@ -39,16 +39,16 @@ def test_execute_plan_runs_python_scripts(tmp_path: Path) -> None:
     assert script_events[0]["exit_code"] == 0
 
 
-def test_find_plan_file_prefers_plan_md(tmp_path: Path, monkeypatch) -> None:
+def test_find_tool_file_prefers_tool_md(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "plan_older.md").write_text("old", encoding="utf-8")
-    (tmp_path / "plan.md").write_text("main", encoding="utf-8")
-    found = find_plan_file()
+    (tmp_path / "tool_older.md").write_text("old", encoding="utf-8")
+    (tmp_path / "tool.md").write_text("main", encoding="utf-8")
+    found = find_tool_file()
     assert found is not None
-    assert found.name == "plan.md"
+    assert found.name == "tool.md"
 
 
-def test_execute_plan_runs_notebook_cells(tmp_path: Path) -> None:
+def test_execute_tool_runs_notebook_cells(tmp_path: Path) -> None:
     nb = tmp_path / "n.ipynb"
     nb.write_text(
         """
@@ -64,9 +64,9 @@ def test_execute_plan_runs_notebook_cells(tmp_path: Path) -> None:
         """.strip(),
         encoding="utf-8",
     )
-    plan = tmp_path / "plan.md"
-    plan.write_text(f"- `{nb.name}`", encoding="utf-8")
-    result = execute_plan(prompt="execute", plan_file=plan, run_uid="run-notebook")
+    tool = tmp_path / "tool.md"
+    tool.write_text(f"- `{nb.name}`", encoding="utf-8")
+    result = execute_tool(prompt="execute", tool_file=tool, run_uid="run-notebook")
     notebook_events = [
         event
         for event in result["trace_events"]
@@ -76,7 +76,7 @@ def test_execute_plan_runs_notebook_cells(tmp_path: Path) -> None:
     assert notebook_events[0]["exit_code"] == 0
 
 
-def test_execute_plan_passes_master_run_uid_env_to_python_script(
+def test_execute_tool_passes_master_run_uid_env_to_python_script(
     tmp_path: Path,
 ) -> None:
     script = tmp_path / "env_check.py"
@@ -84,12 +84,12 @@ def test_execute_plan_passes_master_run_uid_env_to_python_script(
         "import os\nprint(os.getenv('LAMIN_INITIATED_BY_RUN_UID', ''))\n",
         encoding="utf-8",
     )
-    plan = tmp_path / "plan.md"
-    plan.write_text(f"- run `{script.name}`\n", encoding="utf-8")
+    tool = tmp_path / "tool.md"
+    tool.write_text(f"- run `{script.name}`\n", encoding="utf-8")
 
-    result = execute_plan(
-        prompt="execute this plan",
-        plan_file=plan,
+    result = execute_tool(
+        prompt="execute this tool",
+        tool_file=tool,
         run_uid="master-run-uid",
     )
     script_events = [
@@ -101,7 +101,7 @@ def test_execute_plan_passes_master_run_uid_env_to_python_script(
     assert "master-run-uid" in str(script_events[0]["stdout"])
 
 
-def test_execute_plan_sets_master_run_uid_env_for_notebook(tmp_path: Path) -> None:
+def test_execute_tool_sets_master_run_uid_env_for_notebook(tmp_path: Path) -> None:
     nb = tmp_path / "n.ipynb"
     nb.write_text(
         """
@@ -116,9 +116,9 @@ def test_execute_plan_sets_master_run_uid_env_for_notebook(tmp_path: Path) -> No
         """.strip(),
         encoding="utf-8",
     )
-    plan = tmp_path / "plan.md"
-    plan.write_text(f"- `{nb.name}`", encoding="utf-8")
-    result = execute_plan(prompt="execute", plan_file=plan, run_uid="run-notebook")
+    tool = tmp_path / "tool.md"
+    tool.write_text(f"- `{nb.name}`", encoding="utf-8")
+    result = execute_tool(prompt="execute", tool_file=tool, run_uid="run-notebook")
     notebook_events = [
         event
         for event in result["trace_events"]

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from lamin_utils import logger
 
 from .agent import run_agent
-from .do_executor import execute_plan, execute_runnable_paths, find_plan_file
+from .do_executor import execute_runnable_paths, execute_tool, find_tool_file
 from .output_saver import save_generated_tool_files
 from .run_context import RunContext, create_run_uid
 
@@ -166,7 +166,7 @@ def _resolve_prompt_runnable_paths(prompt: str) -> list[Path]:
     keys = _extract_runnable_keys_from_prompt(prompt)
     if not keys:
         raise click.ClickException(
-            "Default mode executes existing tools only. Include at least one .py/.ipynb tool key/path in --prompt, or use --plan to create/update tools."
+            "Default mode executes existing tools only. Include at least one .py/.ipynb tool key/path in --prompt, or use --tool to create/update tools."
         )
     return [_resolve_existing_runnable_path(key) for key in keys]
 
@@ -218,7 +218,7 @@ def run_agent_mode(
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
 
-    suffix = "md" if mode == "plan" else "py"
+    suffix = "md" if mode == "tool" else "py"
     default_name = f"{mode}_{run_uid}.{suffix}"
     output_path = output_file or Path(default_name)
 
@@ -249,7 +249,7 @@ def run_agent_mode(
         and resolved_runnable_path not in generated_files
     ):
         generated_files.append(resolved_runnable_path)
-    if mode == "plan":
+    if mode == "tool":
         save_generated_tool_files(generated_files)
     return {
         "run_uid": run_uid,
@@ -259,21 +259,21 @@ def run_agent_mode(
     }
 
 
-def execute_the_plan(
+def execute_the_tool(
     prompt: str,
-    plan_file: Path,
+    tool_file: Path,
 ) -> dict[str, str | None]:
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
 
-    result = execute_plan(
+    result = execute_tool(
         prompt=prompt,
-        plan_file=plan_file,
+        tool_file=tool_file,
         run_uid=run_uid,
     )
     return {
         "run_uid": run_uid,
-        "plan_path": str(plan_file),
+        "tool_path": str(tool_file),
         "final_text": str(result.get("final_text", "")),
     }
 
@@ -318,18 +318,18 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
 @click.command()
 @click.option("--prompt", required=True, type=str, help="User prompt.")
 @click.option(
-    "--plan",
-    "plan_mode",
+    "--tool",
+    "tool_mode",
     is_flag=True,
-    help="Switch to planning mode (plan generation).",
+    help="Switch to toolning mode (tool generation).",
 )
 @click.option("--output-file", type=click.Path(path_type=Path), default=None)
 @click.option("--model", type=str, default="gemini-flash-latest", show_default=True)
 @click.option(
-    "--plan-file",
+    "--tool-file",
     type=click.Path(path_type=Path, exists=True),
     default=None,
-    help="Optional path to plan file to execute in default mode.",
+    help="Optional path to tool file to execute in default mode.",
 )
 @click.option(
     "--no-track",
@@ -346,18 +346,18 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
 @ln.flow("wDJpT3xdqjY8")
 def main(
     prompt: str,
-    plan_mode: bool,
+    tool_mode: bool,
     output_file: Path | None,
     model: str,
-    plan_file: Path | None,
+    tool_file: Path | None,
     no_track: bool,
     project: str | None,
 ) -> None:
     """LAG CLI."""
     _warn_if_missing_project(project)
-    if plan_mode:
+    if tool_mode:
         outcome = run_agent_mode(
-            mode="plan",
+            mode="tool",
             prompt=prompt,
             output_file=output_file,
             model=model,
@@ -376,15 +376,15 @@ def main(
             _secho(str(outcome["final_text"]), dim=True)
         return
 
-    chosen_plan_file = find_plan_file(plan_file)
-    if chosen_plan_file is not None:
-        outcome = execute_the_plan(
+    chosen_tool_file = find_tool_file(tool_file)
+    if chosen_tool_file is not None:
+        outcome = execute_the_tool(
             prompt=prompt,
-            plan_file=chosen_plan_file,
+            tool_file=chosen_tool_file,
         )
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
-        _echo_key_value("plan", str(outcome["plan_path"]), value_color="magenta")
+        _echo_key_value("tool", str(outcome["tool_path"]), value_color="magenta")
         _secho(str(outcome["final_text"]), dim=True)
         return
 
