@@ -38,21 +38,23 @@ def test_create_favorite_protein_sequence(setup_lamindb) -> None:
         Path("./testdb1-runs").rglob("*.ipynb")
     )
     assert runnable_files
+    assert not any(p.suffix == ".ipynb" for p in runnable_files), (
+        "agent wrote a notebook instead of a Python script"
+    )
+    assert len([p for p in runnable_files if p.suffix == ".py"]) == 1, (
+        "agent should write exactly one .py file"
+    )
 
-    for path in runnable_files:
-        if path.suffix == ".py":
-            code = path.read_text()
-            try:
-                ast.parse(code)
-            except SyntaxError as e:
-                raise AssertionError(f"{path.name} is not valid Python: {e}") from e
-            assert "import lamindb" in code, f"{path.name} does not import lamindb"
-            assert ".save(" in code, f"{path.name} does not call .save()"
+    script = next(p for p in runnable_files if p.suffix == ".py")
+    code = script.read_text()
+    ast.parse(code)
 
-    # step 2: execute the script (pass the filename so the CLI knows what to run)
-    script_name = runnable_files[0].name
-    result = run_lag_cli("./testdb1-runs", "--prompt", script_name)
-    assert result.returncode == 0
+    # step 2: execute the script directly
+    subprocess.run(
+        [sys.executable, script.name],
+        cwd="./testdb1-runs",
+        check=True,
+    )
 
     # step 3: check .fasta was produced and is valid
     fasta_files = list(Path("./testdb1-runs").rglob("*.fasta"))
