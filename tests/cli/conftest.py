@@ -1,26 +1,23 @@
 import shutil
+import sys
 from pathlib import Path
 
 import lamindb as ln
 import pytest
 
-
-@pytest.fixture(scope="session")
-def setup_lamindb():
-    ln.setup.init(storage="./testagentdb")
-    yield
-    shutil.rmtree("./testagentdb")
-    ln.setup.delete("testagentdb", force=True)
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_testdb1():
-    dbroot_str = "./testdb1"
-    if Path(dbroot_str).exists():
-        shutil.rmtree(dbroot_str)
-        ln.setup.delete(dbroot_str, force=True)
+def setup_lamindb():
     runs_root = Path("./testdb1-runs")
-    if runs_root.exists():
-        shutil.rmtree(runs_root)
     runs_root.mkdir(parents=True, exist_ok=True)
-    ln.setup.init(storage=dbroot_str, modules="bionty")
+    ln.setup.init(storage="./testdb1", modules="bionty")
+    yield
+    shutil.rmtree("./testdb1", ignore_errors=True)
+    try:
+        ln.setup.delete("testdb1", force=True)
+    except Exception:  # noqa: S110
+        pass
