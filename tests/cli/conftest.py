@@ -5,14 +5,6 @@ import lamindb as ln
 import pytest
 
 
-@pytest.fixture(scope="session")
-def setup_lamindb():
-    ln.setup.init(storage="./testagentdb")
-    yield
-    shutil.rmtree("./testagentdb")
-    ln.setup.delete("testagentdb", force=True)
-
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_testdb1():
     dbroot_str = "./testdb1"
