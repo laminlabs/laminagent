@@ -29,7 +29,7 @@ def _is_valid_fasta(text: str) -> bool:
     return bool(seq) and all(c.upper() in _VALID_AMINO_ACIDS for c in seq)
 
 
-def test_create_favorite_protein_sequence(setup_lamindb) -> None:
+def test_create_favorite_protein_sequence() -> None:
     # step 1: write the script
     result = run_lag_cli("./testdb1-runs", "--tool", "--prompt", PROMPT)
     assert result.returncode == 0
