@@ -1,6 +1,6 @@
 ⚠️ This repo is in development right now. ⚠️
 
-# Lag: Lamin's Agent CLI
+# Lag CLI: Lamin Agent CLI
 
 `lag` can execute existing runnable tools and author/update runnable scripts (`.py`) and notebooks (`.ipynb`).
 
@@ -25,6 +25,8 @@ Run in default mode:
 ```bash
 lag --prompt "Write a text file with 'Hello agent!' in it, please"
 ```
+
+You can explore runnable example scenarios in `tests/examples`.
 
 ## Modes
 
