@@ -12,7 +12,7 @@ def setup_testdb1():
     if dbroot.exists():
         print("removing existing testdb1 storage location and database")
         shutil.rmtree(dbroot)
-        ln.setup.delete(dbroot, force=True)
+        ln.setup.delete(TESTDB1_NAME, force=True)
     dev_dir = Path(TESTDB1_DEV_DIR)
     if dev_dir.exists():
         print("removing existing testdb1 development directory")
