@@ -2,7 +2,7 @@
 
 # Lag CLI: Lamin Agent CLI
 
-`lag` can execute existing runnable tools and author/update runnable scripts (`.py`) and notebooks (`.ipynb`).
+`lag` can execute existing runnable tools and author/update runnable scripts (`.py`).
 
 ## Setup
 
@@ -33,7 +33,7 @@ You can explore runnable example scenarios in `tests/examples`.
 ### Default mode (execute only)
 
 - If a tool exists (`tool.md` or latest `tool_*.md`, or `--tool-file`), `lag` executes the referenced runnable tools.
-- Otherwise, `lag` executes existing runnable tools referenced in `--prompt` (explicit `.py` / `.ipynb` key or path).
+- Otherwise, `lag` executes existing runnable tools referenced in `--prompt` (explicit `.py` key or path).
 - Default mode does not create or update tools. If a referenced tool is missing, it fails with a clear error.
 
 ### Planning mode (`--tool`)
@@ -52,11 +52,11 @@ Generated/updated tool files are saved via `lamin save` in tool mode.
 - `--model <model-name>` selects the Gemini model (`--tool` mode).
 - `--output-file <path>` sets output filename for generated content (`--tool` mode).
 - `--tool-file <path>` executes a specific tool in default mode.
-- `--no-track` disables `ln.track()` / `ln.finish()` injection in generated scripts/notebooks (`--tool` mode).
+- `--no-track` disables `ln.track()` / `ln.finish()` injection in generated scripts (`--tool` mode).
 
 ## Run Context Propagation
 
-When `lag` executes scripts/notebooks, it propagates:
+When `lag` executes scripts, it propagates:
 
 - `LAMIN_INITIATED_BY_RUN_UID` (master run uid)
 - `LAMIN_CURRENT_PROJECT` (if `--project` is provided)

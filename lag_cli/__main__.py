@@ -16,7 +16,7 @@ from .run_context import RunContext, create_run_uid
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
-_RUNNABLE_KEY_PATTERN = re.compile(r"([A-Za-z0-9_./-]+\.(?:py|ipynb))")
+_RUNNABLE_KEY_PATTERN = re.compile(r"([A-Za-z0-9_./-]+\.py)")
 _COLOR_ENABLED = os.getenv("NO_COLOR") is None
 
 
@@ -166,7 +166,7 @@ def _resolve_prompt_runnable_paths(prompt: str) -> list[Path]:
     keys = _extract_runnable_keys_from_prompt(prompt)
     if not keys:
         raise click.ClickException(
-            "Default mode executes existing tools only. Include at least one .py/.ipynb tool key/path in --prompt, or use --tool to create/update tools."
+            "Default mode executes existing tools only. Include at least one .py tool key/path in --prompt, or use --tool to create/update tools."
         )
     return [_resolve_existing_runnable_path(key) for key in keys]
 
@@ -218,7 +218,7 @@ def run_agent_mode(
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
 
-    suffix = "md" if mode == "tool" else "py"
+    suffix = "py"
     default_name = f"{mode}_{run_uid}.{suffix}"
     output_path = output_file or Path(default_name)
 
@@ -334,7 +334,7 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
 @click.option(
     "--no-track",
     is_flag=True,
-    help="Disable automatic insertion of ln.track()/ln.finish() in generated scripts/notebooks.",
+    help="Disable automatic insertion of ln.track()/ln.finish() in generated scripts.",
 )
 @click.option(
     "--project",

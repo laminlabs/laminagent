@@ -11,7 +11,6 @@ import requests
 from .context import get_lamindb_skill, get_local_skill
 from .writer import (
     write_from_template,
-    write_jupyter_notebook,
     write_python_script,
 )
 
@@ -22,14 +21,14 @@ if TYPE_CHECKING:
 
 PLAN_SYSTEM_INSTRUCTION = (
     "You are a tool authoring agent. In --tool mode, create or update runnable "
-    "tool files (.py/.ipynb) that satisfy the prompt. If the prompt references an "
+    "tool files (.py only) that satisfy the prompt. If the prompt references an "
     "explicit tool key/path, update that exact file instead of creating a new name. "
     "You may read skills/query LaminDB for context, but do not write markdown tools."
 )
 
 DO_SYSTEM_INSTRUCTION = (
     "You are a scientific coding agent. First retrieve relevant context when useful, "
-    "then write runnable analysis code. For every output file your script/notebook writes, "
+    "then write runnable analysis code. For every output file your script writes, "
     "explicitly call ln.Artifact('<output_path>').save() in the generated code. "
     "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
     "write the task directly in the produced runnable tool file(s)."
@@ -75,31 +74,6 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
                         "filename": {"type": "STRING"},
                     },
                     "required": ["template_path", "filename"],
-                },
-            }
-        )
-    if mode == "tool":
-        declarations.append(
-            {
-                "name": "write_jupyter_notebook",
-                "description": "Write an ipynb notebook file with markdown/code cells.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "filename": {"type": "STRING"},
-                        "cells": {
-                            "type": "ARRAY",
-                            "items": {
-                                "type": "OBJECT",
-                                "properties": {
-                                    "type": {"type": "STRING"},
-                                    "content": {"type": "STRING"},
-                                },
-                                "required": ["type", "content"],
-                            },
-                        },
-                    },
-                    "required": ["filename", "cells"],
                 },
             }
         )
@@ -159,18 +133,18 @@ def _looks_like_wrapper_runner(code: str, existing_generated_files: list[str]) -
 
 def _is_runnable_tool_path(path_str: str) -> bool:
     suffix = Path(path_str).suffix.lower()
-    return suffix in {".py", ".ipynb"}
+    return suffix == ".py"
 
 
 def _is_explicit_tool_key(key: str) -> bool:
     stripped = key.strip().lower()
-    return stripped.endswith(".py") or stripped.endswith(".ipynb")
+    return stripped.endswith(".py")
 
 
 def _extract_explicit_tool_keys(text: str) -> list[str]:
     keys: list[str] = []
     seen: set[str] = set()
-    for match in re.findall(r"([A-Za-z0-9_./-]+\.(?:py|ipynb))", text):
+    for match in re.findall(r"([A-Za-z0-9_./-]+\.py)", text):
         key = match.strip()
         if not key or key in seen:
             continue
@@ -182,7 +156,6 @@ def _extract_explicit_tool_keys(text: str) -> list[str]:
 def _default_filename_for_tool(tool_name: str, default_output_file: Path) -> str:
     suffix_by_tool = {
         "write_python_script": ".py",
-        "write_jupyter_notebook": ".ipynb",
     }
     expected_suffix = suffix_by_tool.get(tool_name)
     if expected_suffix is None:
@@ -358,31 +331,6 @@ def _dispatch_tool(
             }
         return write_python_script(
             code=code,
-            filename=filename,
-            run_uid=run_context.run_uid,
-            track_outputs=run_context.track_outputs,
-        )
-    if name == "write_jupyter_notebook":
-        filename = str(
-            args.get("filename") or ""
-        ).strip() or _default_filename_for_tool(name, default_output_file)
-        if run_context.mode == "tool":
-            explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
-            if len(explicit_keys) == 1 and filename != explicit_keys[0]:
-                return {
-                    "status": "error",
-                    "message": (
-                        "Prompt references explicit tool key "
-                        f"'{explicit_keys[0]}'. Update that exact file instead of "
-                        f"creating '{filename}'."
-                    ),
-                    "run_uid": run_context.run_uid,
-                }
-        cells = args.get("cells")
-        if not isinstance(cells, list):
-            cells = [{"type": "code", "content": ""}]
-        return write_jupyter_notebook(
-            cells=cells,
             filename=filename,
             run_uid=run_context.run_uid,
             track_outputs=run_context.track_outputs,

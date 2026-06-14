@@ -7,7 +7,7 @@ import click
 
 
 def save_generated_tool_files(paths: list[str]) -> None:
-    allowed_suffixes = {".py", ".ipynb"}
+    allowed_suffixes = {".py"}
     seen: set[str] = set()
     for path_str in paths:
         if not path_str or path_str in seen:

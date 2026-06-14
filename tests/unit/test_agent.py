@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from lag_cli.agent import _dispatch_tool, _looks_like_wrapper_runner, run_agent
+from lag_cli.agent import (
+    _dispatch_tool,
+    _function_declarations,
+    _looks_like_wrapper_runner,
+    run_agent,
+)
 from lag_cli.run_context import RunContext
 
 
@@ -91,31 +96,12 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
     assert captured["filename"] == "tool_run.py"
 
 
-def test_defaults_notebook_extension_by_tool_type(monkeypatch) -> None:
-    run_context = RunContext(
-        run_uid="run-1",
-        mode="tool",
-        prompt="p",
-        model="m",
-    )
-    captured: dict[str, str] = {}
-
-    def _fake_write_jupyter_notebook(**kwargs):
-        captured["filename"] = str(kwargs["filename"])
-        return {"status": "success", "file": str(kwargs["filename"])}
-
-    monkeypatch.setattr(
-        "lag_cli.agent.write_jupyter_notebook", _fake_write_jupyter_notebook
-    )
-    _dispatch_tool(
-        name="write_jupyter_notebook",
-        args={"cells": [{"type": "code", "content": "x=1"}]},
-        run_context=run_context,
-        default_output_file=Path("tool_run.md"),
-        existing_generated_files=[],
-    )
-    assert captured["filename"].endswith(".ipynb")
-    assert captured["filename"] == "tool_run.ipynb"
+def test_tool_mode_function_declarations() -> None:
+    names = {entry["name"] for entry in _function_declarations("tool")}
+    assert "get_local_skill" in names
+    assert "get_lamindb_skill" in names
+    assert "write_from_template" in names
+    assert "write_python_script" in names
 
 
 def test_tool_mode_enforces_explicit_key_filename_reuse() -> None:

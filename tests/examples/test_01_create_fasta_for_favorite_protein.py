@@ -26,18 +26,10 @@ def test_create_favorite_protein_sequence() -> None:
     result = run_lag_cli(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
     assert result.returncode == 0
 
-    runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py")) + list(
-        Path(TESTDB1_DEV_DIR).rglob("*.ipynb")
-    )
+    runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py"))
     assert runnable_files
-    assert not any(p.suffix == ".ipynb" for p in runnable_files), (
-        "agent wrote a notebook instead of a Python script"
-    )
-    assert len([p for p in runnable_files if p.suffix == ".py"]) == 1, (
-        "agent should write exactly one .py file"
-    )
-
-    script = next(p for p in runnable_files if p.suffix == ".py")
+    assert len(runnable_files) == 1, "agent should write exactly one .py file"
+    script = runnable_files[0]
     code = script.read_text()
     ast.parse(code)
 

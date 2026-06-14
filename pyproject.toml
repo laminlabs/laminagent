@@ -14,7 +14,6 @@ dependencies = [
     "numpy",
     "pandas",
     "pandera",
-    "nbformat",
     "python-dotenv",
     "requests",
     "bionty",
@@ -40,7 +39,6 @@ testpaths = [
     "tests",
 ]
 filterwarnings = [
-    "ignore:Jupyter is migrating its paths to use standard platformdirs:DeprecationWarning"
 ]
 
 [tool.ruff]
