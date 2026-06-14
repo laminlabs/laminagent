@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from testutils import TESTDB1_DEV_DIR
+
 PROMPT = (
     "Write a Python script that writes a protein sequence to a file called protein.fasta "
     "and saves it as a LaminDB artifact."
@@ -31,11 +33,11 @@ def _is_valid_fasta(text: str) -> bool:
 
 def test_create_favorite_protein_sequence() -> None:
     # step 1: write the script
-    result = run_lag_cli("./testdb1-runs", "--tool", "--prompt", PROMPT)
+    result = run_lag_cli(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
     assert result.returncode == 0
 
-    runnable_files = list(Path("./testdb1-runs").rglob("*.py")) + list(
-        Path("./testdb1-runs").rglob("*.ipynb")
+    runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py")) + list(
+        Path(TESTDB1_DEV_DIR).rglob("*.ipynb")
     )
     assert runnable_files
     assert not any(p.suffix == ".ipynb" for p in runnable_files), (
@@ -52,12 +54,12 @@ def test_create_favorite_protein_sequence() -> None:
     # step 2: execute the script directly
     subprocess.run(
         [sys.executable, script.name],
-        cwd="./testdb1-runs",
+        cwd=TESTDB1_DEV_DIR,
         check=True,
     )
 
     # step 3: check .fasta was produced and is valid
-    fasta_files = list(Path("./testdb1-runs").rglob("*.fasta"))
+    fasta_files = list(Path(TESTDB1_DEV_DIR).rglob("*.fasta"))
     assert fasta_files, "script ran but produced no .fasta file"
     for fasta in fasta_files:
         assert _is_valid_fasta(fasta.read_text()), f"{fasta.name} is not valid FASTA"
