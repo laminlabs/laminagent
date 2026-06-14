@@ -16,5 +16,8 @@ def lint(session: nox.Session) -> None:
 @nox.session()
 @nox.parametrize("group", ["unit", "cli"])
 def test(session: nox.Session, group: str) -> None:
-    coverage_args = ["--cov=lag_cli", "--cov-append", "--cov-report=term-missing"]
+    if group == "cli":
+        coverage_args = []
+    else:
+        coverage_args = ["--cov=lag_cli", "--cov-append", "--cov-report=term-missing"]
     session.run("pytest", "-s", f"tests/{group}", *coverage_args)

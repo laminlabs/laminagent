@@ -1,0 +1,3 @@
+TESTDB1_NAME = "testdb1"
+TESTDB1_STORAGE = f"./{TESTDB1_NAME}-storage"
+TESTDB1_DEV_DIR = f"./{TESTDB1_NAME}-dev-dir"
