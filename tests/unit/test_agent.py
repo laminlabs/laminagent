@@ -278,3 +278,66 @@ def test_run_agent_stops_after_short_circuit_lookup(monkeypatch) -> None:
 
     assert result["final_text"] == "Found existing runnable tool."
     assert result["resolved_runnable_path"] == "test-lag/create_fasta.py"
+
+
+def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        mode="tool",
+        prompt="make a tool",
+        model="m",
+    )
+    model_response = {
+        "usageMetadata": {
+            "promptTokenCount": 11,
+            "candidatesTokenCount": 7,
+            "totalTokenCount": 18,
+        },
+        "candidates": [{"content": {"parts": [{"text": "done"}]}}],
+    }
+    monkeypatch.setattr(
+        "lag_cli.agent._post_generate_content", lambda **_kwargs: model_response
+    )
+
+    result = run_agent(
+        api_key="dummy",
+        run_context=run_context,
+        output_file=Path("out.py"),
+        max_steps=1,
+    )
+
+    assert result["gemini_usage"] == {
+        "n_call_count": 1,
+        "n_prompt_tokens": 11,
+        "n_output_tokens": 7,
+        "n_total_tokens": 18,
+    }
+
+
+def test_run_agent_handles_missing_usage_metadata(monkeypatch) -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        mode="tool",
+        prompt="make a tool",
+        model="m",
+    )
+    model_response = {
+        "candidates": [{"content": {"parts": [{"text": "done"}]}}],
+    }
+    monkeypatch.setattr(
+        "lag_cli.agent._post_generate_content", lambda **_kwargs: model_response
+    )
+
+    result = run_agent(
+        api_key="dummy",
+        run_context=run_context,
+        output_file=Path("out.py"),
+        max_steps=1,
+    )
+
+    assert result["gemini_usage"] == {
+        "n_call_count": 1,
+        "n_prompt_tokens": 0,
+        "n_output_tokens": 0,
+        "n_total_tokens": 0,
+    }
