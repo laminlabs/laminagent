@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [unit, cli]
+        group: [unit, examples]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
