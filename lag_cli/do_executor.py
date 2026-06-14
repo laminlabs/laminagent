@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import nbformat
-
 RUN_UID_ENV_VAR = "LAMIN_INITIATED_BY_RUN_UID"
 
 
@@ -32,18 +30,16 @@ def find_tool_file(explicit_tool_file: Path | None = None) -> Path | None:
 
 
 def extract_runnable_paths(tool_text: str, tool_dir: Path) -> list[Path]:
-    """Extract python scripts and notebooks from markdown tool text."""
+    """Extract python scripts from markdown tool text."""
     candidates: list[str] = []
     seen: set[str] = set()
 
-    for match in re.finditer(r"`([^`]+\.(?:py|ipynb))`", tool_text):
+    for match in re.finditer(r"`([^`]+\.py)`", tool_text):
         candidates.append(match.group(1))
 
     for line in tool_text.splitlines():
         stripped = line.strip().lstrip("-* ").strip()
-        if (
-            stripped.endswith(".py") or stripped.endswith(".ipynb")
-        ) and " " not in stripped:
+        if stripped.endswith(".py") and " " not in stripped:
             candidates.append(stripped)
 
     paths: list[Path] = []
@@ -77,38 +73,6 @@ def _execute_python(script_path: Path, run_uid: str) -> dict[str, Any]:
     }
 
 
-def _execute_notebook(notebook_path: Path, run_uid: str) -> dict[str, Any]:
-    nb = nbformat.read(notebook_path, as_version=4)
-    globals_ns: dict[str, Any] = {}
-    outputs: list[str] = []
-    errors: list[str] = []
-    previous_run_uid = os.environ.get(RUN_UID_ENV_VAR)
-    os.environ[RUN_UID_ENV_VAR] = run_uid
-    try:
-        for idx, cell in enumerate(nb.cells):
-            if cell.cell_type != "code":
-                continue
-            source = str(cell.source or "")
-            try:
-                exec(compile(source, str(notebook_path), "exec"), globals_ns)  # noqa: S102
-                outputs.append(f"cell_{idx}: ok")
-            except Exception as exc:
-                errors.append(f"cell_{idx}: {exc}")
-                break
-    finally:
-        if previous_run_uid is None:
-            os.environ.pop(RUN_UID_ENV_VAR, None)
-        else:
-            os.environ[RUN_UID_ENV_VAR] = previous_run_uid
-    return {
-        "kind": "notebook",
-        "path": str(notebook_path),
-        "exit_code": 1 if errors else 0,
-        "stdout": "\n".join(outputs)[-4000:],
-        "stderr": "\n".join(errors)[-4000:],
-    }
-
-
 def execute_tool(*, prompt: str, tool_file: Path, run_uid: str) -> dict[str, Any]:
     tool_text = tool_file.read_text(encoding="utf-8")
     runnable_paths = extract_runnable_paths(tool_text, tool_file.parent)
@@ -119,13 +83,12 @@ def execute_tool(*, prompt: str, tool_file: Path, run_uid: str) -> dict[str, Any
         source=str(tool_file),
     )
     if not runnable_paths:
-        payload["final_text"] = "No runnable script/notebook paths found in the tool."
+        payload["final_text"] = "No runnable script paths found in the tool."
     else:
         failed = [
             event
             for event in payload["trace_events"]
-            if event.get("event") in {"script_executed", "notebook_executed"}
-            and event.get("exit_code") != 0
+            if event.get("event") == "script_executed" and event.get("exit_code") != 0
         ]
         payload["final_text"] = (
             f"Executed {len(runnable_paths)} runnables from tool; {len(failed)} failed."
@@ -140,7 +103,7 @@ def execute_runnable_paths(
     run_uid: str,
     source: str,
 ) -> dict[str, Any]:
-    """Execute runnable python scripts/notebooks and return trace payload."""
+    """Execute runnable python scripts and return trace payload."""
     trace_events: list[dict[str, Any]] = [
         {
             "step": 0,
@@ -156,7 +119,7 @@ def execute_runnable_paths(
             "run_uid": run_uid,
             "trace_events": trace_events,
             "generated_file": None,
-            "final_text": "No runnable script/notebook paths to execute.",
+            "final_text": "No runnable script paths to execute.",
         }
 
     for idx, runnable_path in enumerate(runnable_paths, start=1):
@@ -170,12 +133,8 @@ def execute_runnable_paths(
             )
             continue
 
-        if runnable_path.suffix == ".ipynb":
-            execution = _execute_notebook(runnable_path, run_uid)
-            event = "notebook_executed"
-        else:
-            execution = _execute_python(runnable_path, run_uid)
-            event = "script_executed"
+        execution = _execute_python(runnable_path, run_uid)
+        event = "script_executed"
 
         trace_events.append(
             {
@@ -188,8 +147,7 @@ def execute_runnable_paths(
     failed = [
         event
         for event in trace_events
-        if event.get("event") in {"script_executed", "notebook_executed"}
-        and event.get("exit_code") != 0
+        if event.get("event") == "script_executed" and event.get("exit_code") != 0
     ]
     final_text = (
         f"Executed {len(runnable_paths)} runnables; {len(failed)} failed."

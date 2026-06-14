@@ -60,9 +60,9 @@ def test_warn_if_missing_project_logs_warning(monkeypatch) -> None:
 
 
 def test_extract_runnable_keys_from_prompt_deduplicates() -> None:
-    prompt = "rerun test-lag/create_fasta.py and test-lag/create_fasta.py plus x.ipynb"
+    prompt = "rerun test-lag/create_fasta.py and test-lag/create_fasta.py plus x.py"
     keys = _extract_runnable_keys_from_prompt(prompt)
-    assert keys == ["test-lag/create_fasta.py", "x.ipynb"]
+    assert keys == ["test-lag/create_fasta.py", "x.py"]
 
 
 def test_resolve_prompt_runnable_paths_requires_explicit_key() -> None:
