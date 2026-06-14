@@ -3,27 +3,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from testutils import TESTDB1_DEV_DIR
+from testutils import TESTDB1_DEV_DIR, run_lag_cli
 
 PROMPT = (
-    "Write a Python script that writes a protein sequence to a file called protein.fasta "
+    "Write a Python script that writes your favorite protein sequence to a file called protein.fasta "
     "and saves it as a LaminDB artifact."
 )
 
 _VALID_AMINO_ACIDS = set("ACDEFGHIKLMNPQRSTVWYBZXJUO*-")
 
 
-def run_lag_cli(run_dir: str, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "lag_cli", *args],
-        cwd=run_dir,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-
-def _is_valid_fasta(text: str) -> bool:
+def is_valid_fasta(text: str) -> bool:
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     if not lines or not lines[0].startswith(">"):
         return False
@@ -62,4 +52,4 @@ def test_create_favorite_protein_sequence() -> None:
     fasta_files = list(Path(TESTDB1_DEV_DIR).rglob("*.fasta"))
     assert fasta_files, "script ran but produced no .fasta file"
     for fasta in fasta_files:
-        assert _is_valid_fasta(fasta.read_text()), f"{fasta.name} is not valid FASTA"
+        assert is_valid_fasta(fasta.read_text()), f"{fasta.name} is not valid FASTA"
