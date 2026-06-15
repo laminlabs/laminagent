@@ -242,13 +242,10 @@ def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
         return
     if usage["n_call_count"] <= 0:
         return
-    try:
-        feature_by_key = _ensure_lag_cli_usage_features()
-        ln.context.run.features.add_values(
-            {feature_by_key[key]: value for key, value in usage.items()}
-        )
-    except Exception as exc:
-        _echo_warning(f"failed to write Gemini usage features: {exc}")
+    feature_by_key = _ensure_lag_cli_usage_features()
+    ln.context.run.features.add_values(
+        {feature_by_key[key]: value for key, value in usage.items()}
+    )
 
 
 def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
