@@ -19,7 +19,7 @@ _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
 _RUNNABLE_KEY_PATTERN = re.compile(r"([A-Za-z0-9_./-]+\.py)")
 _COLOR_ENABLED = os.getenv("NO_COLOR") is None
-_FEATURE_NAMES_USAGE = (
+_USAGE_FEATURES_NAMES = (
     "n_call_count",
     "n_prompt_tokens",
     "n_output_tokens",
@@ -209,10 +209,10 @@ def _print_generated_tool_contents(paths: list[Path]) -> None:
 
 
 def _normalize_gemini_usage(payload: object) -> dict[str, int]:
-    usage = dict.fromkeys(_FEATURE_NAMES_USAGE, 0)
+    usage = dict.fromkeys(_USAGE_FEATURES_NAMES, 0)
     if not isinstance(payload, dict):
         return usage
-    for key in _FEATURE_NAMES_USAGE:
+    for key in _USAGE_FEATURES_NAMES:
         value = payload.get(key, 0)
         usage[key] = int(value) if isinstance(value, int) else 0
     return usage
@@ -229,7 +229,7 @@ def _ensure_lag_cli_usage_features() -> dict[str, ln.Feature]:
         lag_cli_feature_type.save()
 
     features: dict[str, ln.Feature] = {}
-    for key in _FEATURE_NAMES_USAGE:
+    for key in _USAGE_FEATURES_NAMES:
         feature = ln.Feature.filter(name=key, type=lag_cli_feature_type).one_or_none()
         if feature is None:
             feature = ln.Feature(name=key, dtype=int, type=lag_cli_feature_type).save()
