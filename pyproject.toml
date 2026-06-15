@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lag = "laminagent.__main__:main"
+lag = "laminagent.__main__:lag"
 
 [project.urls]
 Home = "https://github.com/laminlabs/laminagent"
