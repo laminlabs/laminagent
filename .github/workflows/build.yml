@@ -35,5 +35,5 @@ jobs:
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.group == 'examples'
         env:
           LAMIN_API_KEY: ${{ secrets.LAMIN_API_KEY_TESTUSER1 }}
-        run: lamin login
+        run: lamin login && lamin connect laminlabs/lamindata
       - run: nox -s "test(group='${{ matrix.group }}')"
