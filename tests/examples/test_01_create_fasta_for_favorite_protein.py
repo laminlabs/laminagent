@@ -7,6 +7,8 @@ from pathlib import Path
 import lamindb as ln
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
+EXAMPLE_UID = "RL6ZsKnHZvlhDg1d"
+
 PROMPT = (
     "Write a Python script that writes your favorite protein sequence to a file called protein.fasta "
     "and saves it as a LaminDB artifact."
