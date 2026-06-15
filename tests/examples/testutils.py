@@ -6,9 +6,9 @@ TESTDB1_STORAGE = f"./{TESTDB1_NAME}-storage"
 TESTDB1_DEV_DIR = f"./{TESTDB1_NAME}-dev-dir"
 
 
-def run_lag_cli(run_dir: str, *args: str) -> subprocess.CompletedProcess[str]:
+def run_laminagent(run_dir: str, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "lag_cli", *args],
+        [sys.executable, "-m", "laminagent", *args],
         cwd=run_dir,
         capture_output=True,
         text=True,

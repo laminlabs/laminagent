@@ -218,21 +218,27 @@ def _normalize_gemini_usage(payload: object) -> dict[str, int]:
     return usage
 
 
-def _ensure_lag_cli_usage_features() -> dict[str, ln.Feature]:
-    lag_cli_feature_type = ln.Feature.filter(name="lag_cli", is_type=True).one_or_none()
-    if lag_cli_feature_type is None:
-        lag_cli_feature_type = ln.Feature(
-            name="lag_cli",
-            description="Auto-generated features tracking lag-cli usage",
+def _ensure_laminagent_usage_features() -> dict[str, ln.Feature]:
+    laminagent_feature_type = ln.Feature.filter(
+        name="laminagent", is_type=True
+    ).one_or_none()
+    if laminagent_feature_type is None:
+        laminagent_feature_type = ln.Feature(
+            name="laminagent",
+            description="Auto-generated features tracking laminagent usage",
             is_type=True,
         )
-        lag_cli_feature_type.save()
+        laminagent_feature_type.save()
 
     features: dict[str, ln.Feature] = {}
     for key in _USAGE_FEATURES_NAMES:
-        feature = ln.Feature.filter(name=key, type=lag_cli_feature_type).one_or_none()
+        feature = ln.Feature.filter(
+            name=key, type=laminagent_feature_type
+        ).one_or_none()
         if feature is None:
-            feature = ln.Feature(name=key, dtype=int, type=lag_cli_feature_type).save()
+            feature = ln.Feature(
+                name=key, dtype=int, type=laminagent_feature_type
+            ).save()
         features[key] = feature
     return features
 
@@ -240,7 +246,7 @@ def _ensure_lag_cli_usage_features() -> dict[str, ln.Feature]:
 def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
     if usage["n_call_count"] <= 0:
         return
-    feature_by_key = _ensure_lag_cli_usage_features()
+    feature_by_key = _ensure_laminagent_usage_features()
     ln.context.run.features.add_values(
         {feature_by_key[key]: value for key, value in usage.items()}
     )
