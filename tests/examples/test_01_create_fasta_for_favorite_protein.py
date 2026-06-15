@@ -7,6 +7,8 @@ from pathlib import Path
 import lamindb as ln
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
+EXAMPLE_UID = "RL6ZsKnHZvlhDg1d"
+
 PROMPT = (
     "Write a Python script that writes your favorite protein sequence to a file called protein.fasta "
     "and saves it as a LaminDB artifact."
@@ -34,6 +36,12 @@ def test_create_favorite_protein_sequence() -> None:
 
     run = ln.Run.filter(uid=run_uid).one_or_none()
     assert run is not None, f"Run with uid={run_uid} was not found"
+    example_record = ln.Record.filter(uid=EXAMPLE_UID).one_or_none()
+    if example_record is None:
+        example_record = ln.Record(name="example_fasta_run")
+        example_record.uid = EXAMPLE_UID
+        example_record.save()
+    run.records.add(example_record)
     feature_values = run.features.get_values()
     for key in ("n_call_count", "n_prompt_tokens", "n_output_tokens", "n_total_tokens"):
         assert key in feature_values, f"Missing usage feature: {key}"
