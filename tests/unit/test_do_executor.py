@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from lag_cli.do_executor import execute_tool, extract_runnable_paths, find_tool_file
+from laminagent.do_executor import execute_tool, extract_runnable_paths, find_tool_file
 
 
 def test_extract_runnable_paths(tmp_path: Path) -> None:

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import click
 import pytest
-from lag_cli import output_saver
+from laminagent import output_saver
 
 if TYPE_CHECKING:
     from pathlib import Path
