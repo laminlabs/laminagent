@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import click
+import laminagent._output_saver as output_saver
 import pytest
-from laminagent import output_saver
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -10,10 +10,10 @@ import lamindb as ln
 from dotenv import load_dotenv
 from lamin_utils import logger
 
-from .agent import run_agent
-from .do_executor import execute_runnable_paths, execute_tool, find_tool_file
-from .output_saver import save_generated_tool_files
-from .run_context import RunContext, create_run_uid
+from ._agent import run_agent
+from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
+from ._output_saver import save_generated_tool_files
+from ._run_context import RunContext, create_run_uid
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
