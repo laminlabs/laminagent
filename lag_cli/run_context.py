@@ -5,7 +5,7 @@ from uuid import uuid4
 
 
 @dataclass(slots=True)
-class GeminiUsageTotals:
+class LLMUsageTotals:
     n_call_count: int = 0
     n_prompt_tokens: int = 0
     n_output_tokens: int = 0
@@ -50,7 +50,7 @@ class RunContext:
     prompt: str
     model: str
     track_outputs: bool = True
-    gemini_usage: GeminiUsageTotals = field(default_factory=GeminiUsageTotals)
+    llm_usage: LLMUsageTotals = field(default_factory=LLMUsageTotals)
 
 
 def create_run_uid(lamindb_run_uid: str | None = None) -> str:

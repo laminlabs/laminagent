@@ -311,7 +311,7 @@ def run_agent_mode(
         "generated_path": generated_file if isinstance(generated_file, str) else None,
         "generated_paths": ",".join(generated_files),
         "final_text": str(result.get("final_text", "") or "").strip(),
-        "gemini_usage": _normalize_gemini_usage(result.get("gemini_usage")),
+        "llm_usage": _normalize_gemini_usage(result.get("llm_usage")),
     }
 
 
@@ -419,7 +419,7 @@ def main(
             model=model,
             track_outputs=not no_track,
         )
-        gemini_usage = _normalize_gemini_usage(outcome.get("gemini_usage"))
+        gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
         _log_gemini_usage_to_run_features(gemini_usage)
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")

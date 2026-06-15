@@ -306,7 +306,7 @@ def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
         max_steps=1,
     )
 
-    assert result["gemini_usage"] == {
+    assert result["llm_usage"] == {
         "n_call_count": 1,
         "n_prompt_tokens": 11,
         "n_output_tokens": 7,
@@ -335,7 +335,7 @@ def test_run_agent_handles_missing_usage_metadata(monkeypatch) -> None:
         max_steps=1,
     )
 
-    assert result["gemini_usage"] == {
+    assert result["llm_usage"] == {
         "n_call_count": 1,
         "n_prompt_tokens": 0,
         "n_output_tokens": 0,

@@ -399,9 +399,9 @@ def run_agent(
         )
         usage_metadata = data.get("usageMetadata")
         if isinstance(usage_metadata, dict):
-            run_context.gemini_usage.add_usage_metadata(usage_metadata)
+            run_context.llm_usage.add_usage_metadata(usage_metadata)
         else:
-            run_context.gemini_usage.add_usage_metadata(None)
+            run_context.llm_usage.add_usage_metadata(None)
         candidate = data.get("candidates", [{}])[0]
         response_message = candidate.get("content", {})
         contents.append(response_message)
@@ -508,7 +508,7 @@ def run_agent(
         "generated_files": generated_files,
         "resolved_runnable_path": resolved_runnable_path,
         "final_text": final_text,
-        "gemini_usage": run_context.gemini_usage.to_dict(),
+        "llm_usage": run_context.llm_usage.to_dict(),
     }
 
 
