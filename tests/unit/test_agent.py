@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from laminagent.agent import (
+from laminagent._agent import (
     _dispatch_tool,
     _function_declarations,
     _looks_like_wrapper_runner,
     run_agent,
 )
-from laminagent.run_context import RunContext
+from laminagent._run_context import RunContext
 
 
 def test_detects_subprocess_wrapper_runner() -> None:
@@ -60,7 +60,7 @@ def test_allows_overwriting_existing_runnable_filename_in_do_mode(
         return {"status": "success", "file": str(kwargs["filename"])}
 
     monkeypatch.setattr(
-        "laminagent.agent.write_python_script", _fake_write_python_script
+        "laminagent._agent.write_python_script", _fake_write_python_script
     )
     result = _dispatch_tool(
         name="write_python_script",
@@ -87,7 +87,7 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
         return {"status": "success", "file": str(kwargs["filename"])}
 
     monkeypatch.setattr(
-        "laminagent.agent.write_python_script", _fake_write_python_script
+        "laminagent._agent.write_python_script", _fake_write_python_script
     )
     _dispatch_tool(
         name="write_python_script",
@@ -135,7 +135,7 @@ def test_fails_fast_when_explicit_tool_key_not_found_in_do_mode(monkeypatch) -> 
     )
 
     monkeypatch.setattr(
-        "laminagent.agent.get_lamindb_skill",
+        "laminagent._agent.get_lamindb_skill",
         lambda **_kwargs: {
             "run_uid": "run-1",
             "results": [],
@@ -181,10 +181,10 @@ def test_run_agent_stops_after_fatal_tool_error(monkeypatch) -> None:
         ]
     }
     monkeypatch.setattr(
-        "laminagent.agent._post_generate_content", lambda **_kwargs: tool_response
+        "laminagent._agent._post_generate_content", lambda **_kwargs: tool_response
     )
     monkeypatch.setattr(
-        "laminagent.agent._dispatch_tool",
+        "laminagent._agent._dispatch_tool",
         lambda **_kwargs: {
             "status": "error",
             "fatal": True,
@@ -211,7 +211,7 @@ def test_short_circuits_when_explicit_tool_key_found(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "laminagent.agent.get_lamindb_skill",
+        "laminagent._agent.get_lamindb_skill",
         lambda **_kwargs: {
             "run_uid": "run-1",
             "results": [
@@ -261,10 +261,10 @@ def test_run_agent_stops_after_short_circuit_lookup(monkeypatch) -> None:
         ]
     }
     monkeypatch.setattr(
-        "laminagent.agent._post_generate_content", lambda **_kwargs: tool_response
+        "laminagent._agent._post_generate_content", lambda **_kwargs: tool_response
     )
     monkeypatch.setattr(
-        "laminagent.agent._dispatch_tool",
+        "laminagent._agent._dispatch_tool",
         lambda **_kwargs: {
             "status": "success",
             "short_circuit_execute": True,
@@ -300,7 +300,7 @@ def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
         "candidates": [{"content": {"parts": [{"text": "done"}]}}],
     }
     monkeypatch.setattr(
-        "laminagent.agent._post_generate_content", lambda **_kwargs: model_response
+        "laminagent._agent._post_generate_content", lambda **_kwargs: model_response
     )
 
     result = run_agent(
@@ -329,7 +329,7 @@ def test_run_agent_handles_missing_usage_metadata(monkeypatch) -> None:
         "candidates": [{"content": {"parts": [{"text": "done"}]}}],
     }
     monkeypatch.setattr(
-        "laminagent.agent._post_generate_content", lambda **_kwargs: model_response
+        "laminagent._agent._post_generate_content", lambda **_kwargs: model_response
     )
 
     result = run_agent(

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from laminagent.writer import write_python_script
+from laminagent._writer import write_python_script
 
 
 def test_write_python_script(tmp_path: Path) -> None:

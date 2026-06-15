@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from .context import get_lamindb_skill, get_local_skill
-from .writer import (
+from ._context import get_lamindb_skill, get_local_skill
+from ._writer import (
     write_from_template,
     write_python_script,
 )
@@ -17,7 +17,7 @@ from .writer import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .run_context import RunContext
+    from ._run_context import RunContext
 
 _LLMS_TXT_PATH = Path(__file__).parent.parent / "llms.txt"
 _LLMS_TXT = (
