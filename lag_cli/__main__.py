@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 import click
 import lamindb as ln
@@ -18,6 +19,12 @@ _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
 _RUNNABLE_KEY_PATTERN = re.compile(r"([A-Za-z0-9_./-]+\.py)")
 _COLOR_ENABLED = os.getenv("NO_COLOR") is None
+_USAGE_FEATURES_NAMES = (
+    "n_call_count",
+    "n_prompt_tokens",
+    "n_output_tokens",
+    "n_total_tokens",
+)
 
 
 def _secho(
@@ -201,6 +208,54 @@ def _print_generated_tool_contents(paths: list[Path]) -> None:
         _secho("--- end generated tool ---", fg="black")
 
 
+def _normalize_gemini_usage(payload: object) -> dict[str, int]:
+    usage = dict.fromkeys(_USAGE_FEATURES_NAMES, 0)
+    if not isinstance(payload, dict):
+        return usage
+    for key in _USAGE_FEATURES_NAMES:
+        value = payload.get(key, 0)
+        usage[key] = int(value) if isinstance(value, int) else 0
+    return usage
+
+
+def _ensure_lag_cli_usage_features() -> dict[str, ln.Feature]:
+    lag_cli_feature_type = ln.Feature.filter(name="lag_cli", is_type=True).one_or_none()
+    if lag_cli_feature_type is None:
+        lag_cli_feature_type = ln.Feature(
+            name="lag_cli",
+            description="Auto-generated features tracking lag-cli usage",
+            is_type=True,
+        )
+        lag_cli_feature_type.save()
+
+    features: dict[str, ln.Feature] = {}
+    for key in _USAGE_FEATURES_NAMES:
+        feature = ln.Feature.filter(name=key, type=lag_cli_feature_type).one_or_none()
+        if feature is None:
+            feature = ln.Feature(name=key, dtype=int, type=lag_cli_feature_type).save()
+        features[key] = feature
+    return features
+
+
+def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
+    if usage["n_call_count"] <= 0:
+        return
+    feature_by_key = _ensure_lag_cli_usage_features()
+    ln.context.run.features.add_values(
+        {feature_by_key[key]: value for key, value in usage.items()}
+    )
+
+
+def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
+    if usage["n_call_count"] <= 0:
+        return
+    _echo_section("Gemini Usage")
+    _echo_key_value("n_call_count", str(usage["n_call_count"]), value_color="yellow")
+    _echo_key_value("n_prompt_tokens", str(usage["n_prompt_tokens"]))
+    _echo_key_value("n_output_tokens", str(usage["n_output_tokens"]))
+    _echo_key_value("n_total_tokens", str(usage["n_total_tokens"]), value_color="cyan")
+
+
 def run_agent_mode(
     *,
     mode: str,
@@ -208,7 +263,7 @@ def run_agent_mode(
     output_file: Path | None,
     model: str,
     track_outputs: bool,
-) -> dict[str, str | None]:
+) -> dict[str, Any]:
     workspace_env_path = Path("~/llms.env").expanduser()
     load_dotenv(dotenv_path=workspace_env_path)
     api_key = os.getenv("GEMINI_API_KEY")
@@ -256,6 +311,7 @@ def run_agent_mode(
         "generated_path": generated_file if isinstance(generated_file, str) else None,
         "generated_paths": ",".join(generated_files),
         "final_text": str(result.get("final_text", "") or "").strip(),
+        "llm_usage": _normalize_gemini_usage(result.get("llm_usage")),
     }
 
 
@@ -363,8 +419,11 @@ def main(
             model=model,
             track_outputs=not no_track,
         )
+        gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
+        _log_gemini_usage_to_run_features(gemini_usage)
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
+        _print_gemini_usage_summary(gemini_usage)
         if outcome["generated_path"]:
             _echo_key_value(
                 "generated",
