@@ -1,0 +1,66 @@
+# LaminDB API Reference
+
+## Curating DataFrames
+
+Use `ln.curators.DataFrameCurator` for pandas DataFrames.
+Do NOT use `ln.Curator` or `ln.Curator.from_anndata` for DataFrames.
+
+```python
+import lamindb as ln
+
+ln.track()
+
+df = some_dataframe  # pandas DataFrame
+schema = ln.Schema.get(name="my schema")
+
+curator = ln.curators.DataFrameCurator(df, schema)
+
+try:
+    curator.validate()
+except ln.errors.ValidationError:
+    for col in list(curator.cat.non_validated.keys()):
+        curator.cat.standardize(col)
+    curator.validate()
+
+artifact = curator.save_artifact(key="curated/data.parquet")
+ln.finish()
+```
+
+Key rules:
+- `curator.validate()` returns None on success — do NOT use `if not curator.validate()`
+- `curator.cat.non_validated` is the dict of invalid terms — NOT `curator.cat.columns`
+- `curator.cat.standardize("col")` fixes synonyms in place
+
+## Curating AnnData
+
+Use `ln.curators.AnnDataCurator` for AnnData objects.
+Do NOT use `ln.Curator.from_anndata`.
+
+```python
+curator = ln.curators.AnnDataCurator(adata, schema)
+```
+
+## Tracking runs
+
+```python
+ln.track()       # start a run
+ln.finish()      # finish a run — call inside main(), never at module level
+```
+
+## Saving artifacts
+
+```python
+artifact = ln.Artifact("path/to/file", description="...")
+artifact.save()
+```
+
+## Schemas
+
+```python
+schema = ln.Schema.get(name="my schema")
+schema = ln.Schema(features=[...], flexible=True).save()
+```
+
+## Instance setup
+
+Do NOT call `ln.setup.init()` or `ln.setup.load()` in generated scripts — the instance is already connected.

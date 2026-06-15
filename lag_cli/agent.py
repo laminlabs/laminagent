@@ -19,6 +19,11 @@ if TYPE_CHECKING:
 
     from .run_context import RunContext
 
+_LLMS_TXT_PATH = Path(__file__).parent.parent / "llms.txt"
+_LLMS_TXT = (
+    _LLMS_TXT_PATH.read_text(encoding="utf-8") if _LLMS_TXT_PATH.exists() else ""
+)
+
 PLAN_SYSTEM_INSTRUCTION = (
     "You are a tool authoring agent. In --tool mode, create or update runnable "
     "tool files (.py only) that satisfy the prompt. If the prompt references an "
@@ -368,7 +373,9 @@ def run_agent(
         {
             "role": "user",
             "parts": [
-                {"text": f"{system_instruction}\n\nPrompt: {run_context.prompt}"},
+                {
+                    "text": f"{system_instruction}\n\n{_LLMS_TXT}\n\nPrompt: {run_context.prompt}"
+                },
             ],
         }
     ]
