@@ -1,8 +1,10 @@
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
 
+import lamindb as ln
 from testutils import TESTDB1_DEV_DIR, run_lag_cli
 
 PROMPT = (
@@ -25,6 +27,16 @@ def test_create_favorite_protein_sequence() -> None:
     # step 1: write the script
     result = run_lag_cli(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
     assert result.returncode == 0
+    clean_stdout = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+    run_uid_match = re.search(r"run_uid=([A-Za-z0-9]+)", clean_stdout)
+    assert run_uid_match is not None, "CLI output did not include run_uid"
+    run_uid = run_uid_match.group(1)
+
+    run = ln.Run.filter(uid=run_uid).one_or_none()
+    assert run is not None, f"Run with uid={run_uid} was not found"
+    feature_values = run.features.get_values()
+    for key in ("n_call_count", "n_prompt_tokens", "n_output_tokens", "n_total_tokens"):
+        assert key in feature_values, f"Missing usage feature: {key}"
 
     runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py"))
     assert runnable_files
