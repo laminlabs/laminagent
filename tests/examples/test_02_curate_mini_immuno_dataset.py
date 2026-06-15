@@ -1,4 +1,5 @@
 import ast
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,16 +13,24 @@ PROMPT = (
     "Write a Python script, not a notebook."
 )
 
+RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
+
 
 def test_curate_mini_immuno(setup_testdb1) -> None:
+    # each test gets its own subdirectory so runs don't interfere
+    run_dir = Path(RUN_DIR)
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    run_dir.mkdir(parents=True)
+
     # step 1: write the curation script
-    result = run_lag_cli(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
+    result = run_lag_cli(RUN_DIR, "--tool", "--prompt", PROMPT)
     print(f"\n--- agent stdout ---\n{result.stdout}")
     assert result.returncode == 0, (
         f"lag_cli failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
 
-    runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py"))
+    runnable_files = list(run_dir.rglob("*.py"))
     assert runnable_files, (
         f"agent wrote no files\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
@@ -37,7 +46,7 @@ def test_curate_mini_immuno(setup_testdb1) -> None:
     # step 2: execute the script
     script_result = subprocess.run(
         [sys.executable, script.name],
-        cwd=TESTDB1_DEV_DIR,
+        cwd=RUN_DIR,
         capture_output=True,
         text=True,
         check=False,
