@@ -38,7 +38,9 @@ def test_create_favorite_protein_sequence() -> None:
     assert run is not None, f"Run with uid={run_uid} was not found"
     example_record = ln.Record.filter(uid=EXAMPLE_UID).one_or_none()
     if example_record is None:
-        example_record = ln.Record(uid=EXAMPLE_UID, name="example_fasta_run").save()
+        example_record = ln.Record(name="example_fasta_run")
+        example_record.uid = EXAMPLE_UID
+        example_record.save()
     run.records.add(example_record)
     feature_values = run.features.get_values()
     for key in ("n_call_count", "n_prompt_tokens", "n_output_tokens", "n_total_tokens"):
