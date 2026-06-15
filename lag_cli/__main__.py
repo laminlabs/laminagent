@@ -238,8 +238,6 @@ def _ensure_lag_cli_usage_features() -> dict[str, ln.Feature]:
 
 
 def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
-    if ln.context.run is None:
-        return
     if usage["n_call_count"] <= 0:
         return
     feature_by_key = _ensure_lag_cli_usage_features()
