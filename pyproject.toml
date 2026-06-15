@@ -3,7 +3,7 @@ requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "lag-cli"
+name = "lai"
 requires-python = ">=3.10,<=3.14"
 authors = [{name = "Lamin Labs", email = "open-source@lamin.ai"}]
 readme = "README.md"
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lag = "lag_cli.__main__:main"
+lag = "lai.__main__:main"
 
 [project.urls]
 Home = "https://github.com/laminlabs/lag-cli"
@@ -42,7 +42,7 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-src = ["lag_cli", "tests"]
+src = ["lai", "tests"]
 line-length = 88
 lint.select = [
     "F",  # Errors detected by Pyflakes
