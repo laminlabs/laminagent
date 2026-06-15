@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from .context import get_lamindb_skill, get_local_skill
-from .writer import (
+from ._context import get_lamindb_skill, get_local_skill
+from ._writer import (
     write_from_template,
     write_python_script,
 )
@@ -17,7 +17,7 @@ from .writer import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .run_context import RunContext
+    from ._run_context import RunContext
 
 PLAN_SYSTEM_INSTRUCTION = (
     "You are a tool authoring agent. In --tool mode, create or update runnable "
