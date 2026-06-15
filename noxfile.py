@@ -18,6 +18,7 @@ def lint(session: nox.Session) -> None:
 def test(session: nox.Session, group: str) -> None:
     if group == "examples":
         coverage_args = []
+        session.run("pip", "install", "anndata", external=True)
     else:
         coverage_args = ["--cov=lag_cli", "--cov-append", "--cov-report=term-missing"]
     session.run("pytest", "-s", f"tests/{group}", *coverage_args)
