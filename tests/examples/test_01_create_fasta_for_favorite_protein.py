@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import lamindb as ln
-from testutils import TESTDB1_DEV_DIR, run_lag_cli
+from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
     "Write a Python script that writes your favorite protein sequence to a file called protein.fasta "
@@ -25,7 +25,7 @@ def is_valid_fasta(text: str) -> bool:
 
 def test_create_favorite_protein_sequence() -> None:
     # step 1: write the script
-    result = run_lag_cli(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
+    result = run_laminagent(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
     assert result.returncode == 0
     clean_stdout = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
     run_uid_match = re.search(r"run_uid=([A-Za-z0-9]+)", clean_stdout)

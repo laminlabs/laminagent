@@ -7,7 +7,7 @@
 ## Setup
 
 ```bash
-pip install lag-cli
+pip install laminagent
 ```
 
 Create `~/llms.env` with:

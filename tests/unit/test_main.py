@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import click
 import pytest
-from lag_cli.__main__ import (
+from laminagent.__main__ import (
     _extract_runnable_keys_from_prompt,
     _parse_generated_paths,
     _print_generated_tool_contents,
@@ -54,7 +54,7 @@ def test_warn_if_missing_project_logs_warning(monkeypatch) -> None:
     def _fake_warning(message: str) -> None:
         calls.append(message)
 
-    monkeypatch.setattr("lag_cli.__main__.logger.warning", _fake_warning)
+    monkeypatch.setattr("laminagent.__main__.logger.warning", _fake_warning)
     _warn_if_missing_project(None)
     assert len(calls) == 1
 

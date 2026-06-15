@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import lag_cli.context as context
+import laminagent.context as context
 
 DatasetMap = dict[str, dict[str, list[SimpleNamespace]]]
 
