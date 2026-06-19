@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from testutils import TESTDB1_DEV_DIR, run_lag_cli
+from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
     "Curate `ln.examples.datasets.mini_immuno.get_dataset1()` using "
@@ -24,7 +24,7 @@ def test_curate_mini_immuno(setup_testdb1) -> None:
     run_dir.mkdir(parents=True)
 
     # step 1: write the curation script
-    result = run_lag_cli(RUN_DIR, "--tool", "--prompt", PROMPT)
+    result = run_laminagent(RUN_DIR, "--tool", "--prompt", PROMPT)
     print(f"\n--- agent stdout ---\n{result.stdout}")
     assert result.returncode == 0, (
         f"lag_cli failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
