@@ -9,7 +9,7 @@ from testutils import TESTDB1_DEV_DIR, run_lag_cli
 PROMPT = (
     "Curate `ln.examples.datasets.mini_immuno.get_dataset1()` using "
     "`ln.examples.datasets.mini_immuno.define_mini_immuno_schema_flexible()` "
-    "Save as a lamindb artifact. The instance is already connected. "
+    "and save as a lamindb artifact. "
     "Write a Python script, not a notebook."
 )
 
