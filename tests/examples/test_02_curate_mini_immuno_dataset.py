@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import lamindb as ln
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
@@ -14,6 +15,25 @@ PROMPT = (
 )
 
 RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
+
+
+def test_schema_setup(setup_testdb1) -> None:
+    """Sanity-check: can we call define_mini_immuno_schema_flexible() directly?"""
+    ln.track()
+    df = ln.examples.datasets.mini_immuno.get_dataset1()
+    print(f"\nDataset type: {type(df)}, shape: {df.shape}")
+    schema = ln.examples.datasets.mini_immuno.define_mini_immuno_schema_flexible()
+    print(f"Schema: {schema}")
+    curator = ln.curators.DataFrameCurator(df, schema)
+    try:
+        curator.validate()
+    except ln.errors.ValidationError:
+        for col in list(curator.cat.non_validated.keys()):
+            curator.cat.standardize(col)
+        curator.validate()
+    artifact = curator.save_artifact(key="test_schema_setup/mini_immuno.parquet")
+    print(f"Artifact: {artifact}")
+    ln.finish()
 
 
 def test_curate_mini_immuno(setup_testdb1) -> None:
