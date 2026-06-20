@@ -13,18 +13,30 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
             return self._record
 
     class FakeFeature:
-        _store: dict[str, object] = {}
+        _store: dict[tuple[str, object | None], object] = {}
 
-        def __init__(self, name, dtype):
+        def __init__(
+            self, name, dtype=None, type=None, description=None, is_type=False
+        ):
             self.name = name
             self.dtype = dtype
+            self.type = type
+            self.description = description
+            self.is_type = is_type
 
         @classmethod
-        def filter(cls, *, name):
-            return Query(cls._store.get(name))
+        def filter(cls, *, name, type=None, is_type=False):
+            for feature in cls._store.values():
+                if (
+                    feature.name == name
+                    and feature.type == type
+                    and feature.is_type == is_type
+                ):
+                    return Query(feature)
+            return Query(None)
 
         def save(self):
-            self.__class__._store[self.name] = self
+            self.__class__._store[(self.name, self.type)] = self
             return self
 
     class FakeSchema:
@@ -111,6 +123,18 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
         "n_output_tokens",
         "n_total_tokens",
     }
+    usage_feature_type = FakeFeature.filter(name="LagEval", is_type=True).one_or_none()
+    assert usage_feature_type is not None
+    for usage_key in (
+        "n_call_count",
+        "n_prompt_tokens",
+        "n_output_tokens",
+        "n_total_tokens",
+    ):
+        usage_feature = FakeFeature.filter(
+            name=usage_key, type=usage_feature_type
+        ).one_or_none()
+        assert usage_feature is not None
     assert registry is not None
     assert registry.schema_id is None
     assert task is not None
