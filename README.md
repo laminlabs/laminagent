@@ -26,7 +26,15 @@ Run in default mode:
 lag --prompt "Write a text file with 'Hello agent!' in it, please"
 ```
 
-You can explore runnable example scenarios in `tests/examples`.
+You can explore runnable example scenarios in `tests/tasks`.
+
+Before running `lag`, you can initialize LagEval registry types manually:
+
+```bash
+lag setup
+```
+
+`lag` also initializes these records automatically on normal runs.
 
 ## Modes
 
@@ -35,6 +43,26 @@ You can explore runnable example scenarios in `tests/examples`.
 - If a tool exists (`tool.md` or latest `tool_*.md`, or `--tool-file`), `lag` executes the referenced runnable tools.
 - Otherwise, `lag` executes existing runnable tools referenced in `--prompt` (explicit `.py` key or path).
 - Default mode does not create or update tools. If a referenced tool is missing, it fails with a clear error.
+
+### Setup mode (`setup`)
+
+Create or refresh LagEval record types used by `lag`:
+
+```bash
+lag setup
+```
+
+When run from a repository root, this command:
+
+- creates or reuses schema `lag_eval`
+- creates or reuses top-level eval type `LagEval`
+- creates or reuses task types for `tests/tasks/*.py` (excluding `conftest.py` and `testutils.py`)
+
+You can also set up a single task script:
+
+```bash
+lag setup tests/tasks/test_01_create_fasta_for_favorite_protein.py
+```
 
 ### Planning mode (`--tool`)
 
@@ -62,3 +90,16 @@ When `lag` executes scripts, it propagates:
 - `LAMIN_CURRENT_PROJECT` (if `--project` is provided)
 
 `lag` itself does not directly create output artifacts; produced outputs are tracked by executed tool code.
+
+## Eval Telemetry Persistence
+
+In `--tool` mode, laminagent stores telemetry as records and also annotates run features. Logged record features include:
+
+- `package_version`
+- `duration_in_sec`
+- `commit_hash16`
+- `runner_env`
+- `n_call_count`
+- `n_prompt_tokens`
+- `n_output_tokens`
+- `n_total_tokens`
