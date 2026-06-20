@@ -79,8 +79,8 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     )
 
     monkeypatch.setitem(sys.modules, "lamindb", fake_ln)
-    sys.modules.pop("laminagent._eval_setup", None)
-    module = importlib.import_module("laminagent._eval_setup")
+    sys.modules.pop("laminagent.setup", None)
+    module = importlib.import_module("laminagent.setup")
 
     module.setup(
         script_basenames=["test_01_create_fasta_for_favorite_protein.py"],
@@ -91,16 +91,16 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
         verbose=False,
     )
 
-    schema = FakeSchema.filter(name=module.EVAL_SCHEMA_NAME).one_or_none()
+    schema = FakeSchema.filter(name=module.SETUP_SCHEMA_NAME).one_or_none()
     registry = FakeRecord.filter(
-        name=module.EVAL_REGISTRY_NAME, is_type=True
+        name=module.SETUP_REGISTRY_NAME, is_type=True
     ).one_or_none()
     task = FakeRecord.filter(
         name="test_01_create_fasta_for_favorite_protein.py", is_type=True, type=registry
     ).one_or_none()
 
     assert schema is not None
-    assert schema.name == module.EVAL_SCHEMA_NAME
+    assert schema.name == module.SETUP_SCHEMA_NAME
     assert {feature.name for feature in schema.features} == {
         "package_version",
         "duration_in_sec",
@@ -117,9 +117,7 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     assert task.schema is schema
 
 
-def test_setup_from_script_or_cwd_collects_task_scripts(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_setup_collects_task_scripts_from_cwd(tmp_path: Path, monkeypatch) -> None:
     package_dir = tmp_path / "laminagent"
     tasks_dir = package_dir / "tests" / "tasks"
     tasks_dir.mkdir(parents=True)
@@ -130,15 +128,20 @@ def test_setup_from_script_or_cwd_collects_task_scripts(
 
     captured: dict[str, object] = {}
 
-    def _fake_setup(*, script_basenames, verbose=True):
-        captured["script_basenames"] = script_basenames
-        captured["verbose"] = verbose
-
     monkeypatch.chdir(package_dir)
-    monkeypatch.setattr("laminagent._eval_setup.setup", _fake_setup)
+    from laminagent.setup import setup
 
-    from laminagent._eval_setup import setup_from_script_or_cwd
+    monkeypatch.setattr("laminagent.setup.get_or_create_schema", lambda: object())
+    monkeypatch.setattr(
+        "laminagent.setup.get_or_create_registry", lambda _schema: object()
+    )
 
-    setup_from_script_or_cwd(None)
+    def _fake_get_or_create_task(task_name, registry, schema):
+        captured.setdefault("task_names", []).append(task_name)
+        return object()
 
-    assert captured["script_basenames"] == ["test_01.py", "test_02.py"]
+    monkeypatch.setattr("laminagent.setup.get_or_create_task", _fake_get_or_create_task)
+
+    setup(verbose=False)
+
+    assert captured["task_names"] == ["test_01.py", "test_02.py"]

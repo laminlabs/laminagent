@@ -28,11 +28,13 @@ lag --prompt "Write a text file with 'Hello agent!' in it, please"
 
 You can explore runnable example scenarios in `tests/tasks`.
 
-Before logging eval telemetry as records, initialize eval registry types:
+Before running `lag`, you can initialize LaminAgent registry types manually:
 
 ```bash
-lag eval setup
+lag setup
 ```
+
+`lag` also initializes these records automatically on normal runs.
 
 ## Modes
 
@@ -42,12 +44,12 @@ lag eval setup
 - Otherwise, `lag` executes existing runnable tools referenced in `--prompt` (explicit `.py` key or path).
 - Default mode does not create or update tools. If a referenced tool is missing, it fails with a clear error.
 
-### Eval setup mode (`eval setup`)
+### Setup mode (`setup`)
 
-Create or refresh eval record types used for record-based telemetry:
+Create or refresh LaminAgent record types used by `lag`:
 
 ```bash
-lag eval setup
+lag setup
 ```
 
 When run from a repository root, this command:
@@ -56,10 +58,10 @@ When run from a repository root, this command:
 - creates or reuses top-level eval type `LaminAgent`
 - creates or reuses task types for `tests/tasks/*.py` (excluding `conftest.py` and `testutils.py`)
 
-You can also set up a single eval script:
+You can also set up a single task script:
 
 ```bash
-lag eval setup tests/tasks/test_01_create_fasta_for_favorite_protein.py
+lag setup tests/tasks/test_01_create_fasta_for_favorite_protein.py
 ```
 
 ### Planning mode (`--tool`)
@@ -91,7 +93,7 @@ When `lag` executes scripts, it propagates:
 
 ## Eval Telemetry Persistence
 
-In `--tool` mode, laminagent now stores telemetry as records (similar to laminprofiler), rather than annotating run features directly. Logged record features include:
+In `--tool` mode, laminagent stores telemetry as records and also annotates run features. Logged record features include:
 
 - `package_version`
 - `duration_in_sec`

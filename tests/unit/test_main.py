@@ -27,6 +27,11 @@ def _clear_lamin_current_project(monkeypatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _stub_setup(monkeypatch) -> None:
+    monkeypatch.setattr("laminagent._lag.setup", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def _bypass_lag_flow_wrapper(monkeypatch) -> None:
     callback = lag.callback
     unwrapped_callback = callback
@@ -94,32 +99,32 @@ def test_resolve_prompt_runnable_paths_requires_explicit_key() -> None:
         _resolve_prompt_runnable_paths("please rerun the tool")
 
 
-def test_lag_eval_setup_routes_to_setup_handler(monkeypatch) -> None:
+def test_lag_setup_routes_to_setup_handler(monkeypatch) -> None:
     called: dict[str, Path | None] = {}
 
     def _fake_setup(script: Path | None) -> None:
         called["script"] = script
 
-    monkeypatch.setattr("laminagent._lag.setup_from_script_or_cwd", _fake_setup)
+    monkeypatch.setattr("laminagent._lag.setup", _fake_setup)
     runner = CliRunner()
-    result = runner.invoke(lag, ["eval", "setup"])
+    result = runner.invoke(lag, ["setup"])
 
     assert result.exit_code == 0
     assert called["script"] is None
 
 
-def test_lag_eval_setup_accepts_script_argument(tmp_path: Path, monkeypatch) -> None:
+def test_lag_setup_accepts_script_argument(tmp_path: Path, monkeypatch) -> None:
     script = tmp_path / "tests" / "tasks" / "test_01.py"
     script.parent.mkdir(parents=True)
     script.write_text("print('ok')\n", encoding="utf-8")
     called: dict[str, Path | None] = {}
 
-    def _fake_setup(received_script: Path | None) -> None:
-        called["script"] = received_script
+    def _fake_setup(*, script: Path | None = None, **_kwargs) -> None:
+        called["script"] = script
 
-    monkeypatch.setattr("laminagent._lag.setup_from_script_or_cwd", _fake_setup)
+    monkeypatch.setattr("laminagent._lag.setup", _fake_setup)
     runner = CliRunner()
-    result = runner.invoke(lag, ["eval", "setup", str(script)])
+    result = runner.invoke(lag, ["setup", str(script)])
 
     assert result.exit_code == 0
     assert called["script"] == script
@@ -133,6 +138,8 @@ def test_lag_default_mode_still_requires_prompt() -> None:
 
 
 def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
+    monkeypatch.setattr("laminagent._lag.setup", lambda *args, **kwargs: None)
+
     def _fake_execute(prompt: str) -> dict[str, str | None]:
         assert prompt == "run test-lag/create_fasta.py"
         return {
@@ -161,7 +168,7 @@ def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
             FakeRecord.payload = {"features": self.features, "type": self.type}
             return self
 
-    monkeypatch.setattr("laminagent._lag.ensure_eval_task", lambda **_kwargs: "task")
+    monkeypatch.setattr("laminagent._lag.ensure_task", lambda **_kwargs: "task")
     monkeypatch.setattr("laminagent._lag.ln.Record", FakeRecord)
     monkeypatch.setattr("laminagent._lag._current_commit_hash16", lambda: "abc123")
     monkeypatch.setattr("laminagent._lag._current_runner_env", lambda: "github_hosted")

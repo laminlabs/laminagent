@@ -4,6 +4,7 @@ from pathlib import Path
 
 import lamindb as ln
 import pytest
+from laminagent.setup import setup as laminagent_setup
 from testutils import TESTDB1_DEV_DIR, TESTDB1_NAME, TESTDB1_STORAGE
 
 
@@ -23,6 +24,7 @@ def setup_testdb1():
         and os.getenv("GITHUB_REF") == "refs/heads/main"
     ):
         ln.setup.settings.dev_dir = dev_dir
+        laminagent_setup(verbose=False)
         return
 
     storage_root = Path(TESTDB1_STORAGE)
@@ -32,3 +34,4 @@ def setup_testdb1():
         ln.setup.delete(TESTDB1_NAME, force=True)
     ln.setup.init(name=TESTDB1_NAME, storage=storage_root, modules="bionty")
     ln.setup.settings.dev_dir = dev_dir
+    laminagent_setup(verbose=False)

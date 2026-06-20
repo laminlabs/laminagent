@@ -15,9 +15,9 @@ from lamin_utils import logger
 
 from ._agent import run_agent
 from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
-from ._eval_setup import ensure_eval_task, setup_from_script_or_cwd
 from ._output_saver import save_generated_tool_files
 from ._run_context import RunContext, create_run_uid
+from .setup import ensure_task, setup
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
@@ -256,7 +256,7 @@ def _log_gemini_usage_record(
 ) -> None:
     if usage["n_call_count"] <= 0:
         return
-    task = ensure_eval_task(task_name=task_name)
+    task = ensure_task(task_name=task_name)
     ln.Record(
         features={
             "package_version": package_version,
@@ -457,9 +457,11 @@ def lag(
     if ctx.invoked_subcommand is not None:
         return
 
+    setup(verbose=False)
+
     if not prompt:
         raise click.UsageError(
-            "`--prompt` is required for default lag mode; use `lag eval setup` for eval setup."
+            "`--prompt` is required for default lag mode; use `lag setup` to initialize setup records."
         )
     prompt_text = prompt
 
@@ -528,17 +530,12 @@ def lag(
         _secho(str(outcome["final_text"]), dim=True)
 
 
-@lag.group("eval")
-def eval_group() -> None:
-    """Eval-related commands."""
-
-
-@eval_group.command("setup")
+@lag.command("setup")
 @click.argument(
     "script",
     required=False,
     type=click.Path(path_type=Path, exists=True),
 )
-def eval_setup_command(script: Path | None) -> None:
-    """Set up laminagent eval registry and schema."""
-    setup_from_script_or_cwd(script)
+def setup_command(script: Path | None) -> None:
+    """Set up LaminAgent registry and schema."""
+    setup(script=script)
