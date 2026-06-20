@@ -40,11 +40,9 @@ def get_or_create_schema() -> ln.Schema:
 def get_or_create_registry(schema: ln.Schema) -> ln.Record:
     registry = ln.Record.filter(name=SETUP_REGISTRY_NAME, is_type=True).one_or_none()
     if registry is None:
-        registry = ln.Record(
-            name=SETUP_REGISTRY_NAME, is_type=True, schema=schema
-        ).save()
-    elif registry.schema_id is None:
-        registry.schema = schema
+        registry = ln.Record(name=SETUP_REGISTRY_NAME, is_type=True).save()
+    elif registry.schema_id is not None:
+        registry.schema = None
         registry.save()
     return registry
 

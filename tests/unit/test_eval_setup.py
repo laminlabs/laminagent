@@ -112,7 +112,7 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
         "n_total_tokens",
     }
     assert registry is not None
-    assert registry.schema is schema
+    assert registry.schema_id is None
     assert task is not None
     assert task.schema is schema
 
