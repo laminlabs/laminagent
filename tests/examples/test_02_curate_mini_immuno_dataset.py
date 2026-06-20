@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import bionty as bt
 import lamindb as ln
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
@@ -15,6 +16,12 @@ PROMPT = (
 )
 
 RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
+
+
+def test_bionty_basic(setup_testdb1) -> None:
+    """Sanity-check: can bionty look up 'B cell' from the Cell Ontology source?"""
+    record = bt.CellType.from_source(name="B cell")
+    assert record is not None
 
 
 def test_schema_setup(setup_testdb1) -> None:
