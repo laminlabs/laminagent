@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING
 
 import click
@@ -153,7 +154,8 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
     result = runner.invoke(lag, ["--prompt", "run test-lag/create_fasta.py"])
 
     assert result.exit_code == 0
-    assert "run_uid=run-1" in result.output
+    clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "run_uid=run-1" in clean_output
 
 
 def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
