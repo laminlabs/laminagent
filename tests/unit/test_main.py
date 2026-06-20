@@ -26,6 +26,20 @@ def _clear_lamin_current_project(monkeypatch) -> None:
     monkeypatch.delenv("LAMIN_CURRENT_PROJECT", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _bypass_lag_flow_wrapper(monkeypatch) -> None:
+    callback = lag.callback
+    unwrapped_callback = callback
+    while hasattr(unwrapped_callback, "__wrapped__"):
+        unwrapped_callback = unwrapped_callback.__wrapped__
+
+    def _callback_without_flow(*args, **kwargs):
+        ctx = click.get_current_context()
+        return unwrapped_callback(ctx, *args, **kwargs)
+
+    monkeypatch.setattr(lag, "callback", _callback_without_flow)
+
+
 def test_parse_generated_paths_filters_empty_entries(tmp_path: Path) -> None:
     a = tmp_path / "a.py"
     b = tmp_path / "b.py"

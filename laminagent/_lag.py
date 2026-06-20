@@ -272,6 +272,12 @@ def _log_gemini_usage_record(
     ).save()
 
 
+def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
+    if usage["n_call_count"] <= 0:
+        return
+    ln.context.run.features.add_values(dict(usage))
+
+
 def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
     if usage["n_call_count"] <= 0:
         return
@@ -467,6 +473,7 @@ def lag(
             track_outputs=not no_track,
         )
         gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
+        _log_gemini_usage_to_run_features(gemini_usage)
         _log_gemini_usage_record(
             gemini_usage,
             package_version=_current_package_version(),
