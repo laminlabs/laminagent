@@ -17,7 +17,7 @@ from ._agent import run_agent
 from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
 from ._output_saver import save_generated_tool_files
 from ._run_context import RunContext, create_run_uid
-from ._setup import ensure_task, setup
+from ._setup import get_task, normalize_task_name, setup
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
@@ -242,9 +242,16 @@ def _current_runner_env() -> str | None:
 
 
 def _record_usage_task_name(generated_path: str | None) -> str:
+    pytest_current_test = os.getenv("PYTEST_CURRENT_TEST", "")
+    if pytest_current_test:
+        node_id = pytest_current_test.split(" ", 1)[0]
+        test_path = node_id.split("::", 1)[0].replace("\\", "/")
+        if "/tests/tasks/test_" in f"/{test_path}":
+            return normalize_task_name(Path(test_path).name)
+
     if generated_path:
-        return Path(generated_path).name
-    return "lag_tool_mode.py"
+        return normalize_task_name(Path(generated_path).name)
+    return "lag_tool_mode"
 
 
 def _log_gemini_usage_record(
@@ -256,7 +263,12 @@ def _log_gemini_usage_record(
 ) -> None:
     if usage["n_call_count"] <= 0:
         return
-    task = ensure_task(task_name=task_name)
+    task = get_task(task_name=task_name)
+    if task is None or task.schema_id is None:
+        raise click.ClickException(
+            f"LagEval task registry '{task_name}' is not configured. "
+            "Please run `lag setup` first."
+        )
     ln.Record(
         features={
             "package_version": package_version,
@@ -456,8 +468,6 @@ def lag(
     """LAG CLI."""
     if ctx.invoked_subcommand is not None:
         return
-
-    setup(verbose=False)
 
     if not prompt:
         raise click.UsageError(

@@ -67,6 +67,17 @@ def ensure_task(task_name: str) -> ln.Record:
     return get_or_create_task(task_name, registry, schema)
 
 
+def get_registry() -> ln.Record | None:
+    return ln.Record.filter(name=SETUP_REGISTRY_NAME, is_type=True).one_or_none()
+
+
+def get_task(task_name: str) -> ln.Record | None:
+    registry = get_registry()
+    if registry is None:
+        return None
+    return ln.Record.filter(name=task_name, type=registry, is_type=True).one_or_none()
+
+
 def parse_task_name_from_script(script: Path) -> str:
     script = script.resolve()
     assert script.parent.name == "tasks"
