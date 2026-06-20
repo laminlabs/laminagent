@@ -537,5 +537,5 @@ def lag(
     type=click.Path(path_type=Path, exists=True),
 )
 def setup_command(script: Path | None) -> None:
-    """Set up LaminAgent registry and schema."""
+    """Set up LagEval registry and schema."""
     setup(script=script)

@@ -28,7 +28,7 @@ lag --prompt "Write a text file with 'Hello agent!' in it, please"
 
 You can explore runnable example scenarios in `tests/tasks`.
 
-Before running `lag`, you can initialize LaminAgent registry types manually:
+Before running `lag`, you can initialize LagEval registry types manually:
 
 ```bash
 lag setup
@@ -46,7 +46,7 @@ lag setup
 
 ### Setup mode (`setup`)
 
-Create or refresh LaminAgent record types used by `lag`:
+Create or refresh LagEval record types used by `lag`:
 
 ```bash
 lag setup
@@ -54,8 +54,8 @@ lag setup
 
 When run from a repository root, this command:
 
-- creates or reuses schema `laminagent_eval`
-- creates or reuses top-level eval type `LaminAgent`
+- creates or reuses schema `lag_eval`
+- creates or reuses top-level eval type `LagEval`
 - creates or reuses task types for `tests/tasks/*.py` (excluding `conftest.py` and `testutils.py`)
 
 You can also set up a single task script:

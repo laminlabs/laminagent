@@ -4,8 +4,8 @@ from pathlib import Path
 
 import lamindb as ln
 
-SETUP_SCHEMA_NAME = "laminagent_eval"
-SETUP_REGISTRY_NAME = "LaminAgent"
+SETUP_SCHEMA_NAME = "lag_eval"
+SETUP_REGISTRY_NAME = "LagEval"
 
 _USAGE_FEATURE_DTYPES: dict[str, type | str] = {
     "package_version": str,
@@ -109,7 +109,7 @@ def setup(
 
     if verbose:
         print(
-            "Configured LaminAgent registry "
+            "Configured LagEval registry "
             f"'{registry.name}' with schema '{schema.name}'."
         )
         print(f"Configured {len(task_basenames)} task registries.")
