@@ -11,6 +11,9 @@ dynamic = ["version", "description"]
 dependencies = [
     "click",
     "lamindb-core",
+    # below is only needed for
+    # data science workflows, not for laminagent
+    "pyarrow",
     "numpy",
     "pandas",
     "pandera",
