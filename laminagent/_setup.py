@@ -73,13 +73,22 @@ def parse_task_name_from_script(script: Path) -> str:
     script = script.resolve()
     assert script.parent.name == "tasks"
     assert script.parent.parent.name == "tests"
-    return script.name
+    return normalize_task_name(script.name)
+
+
+def normalize_task_name(filename: str) -> str:
+    task_name = Path(filename).name
+    if task_name.endswith(".py"):
+        task_name = task_name[: -len(".py")]
+    if task_name.startswith("test_"):
+        task_name = task_name[len("test_") :]
+    return task_name
 
 
 def _discover_task_basenames() -> list[str]:
     tasks_dir = Path.cwd() / "tests" / "tasks"
     return sorted(
-        path.name
+        normalize_task_name(path.name)
         for path in tasks_dir.glob("*.py")
         if path.is_file() and path.name not in {"conftest.py", "testutils.py"}
     )
@@ -98,7 +107,7 @@ def setup(
         raise ValueError("Pass either script or script_basenames, not both.")
 
     if script_basenames is not None:
-        task_basenames = list(script_basenames)
+        task_basenames = [normalize_task_name(name) for name in script_basenames]
     elif script is not None:
         task_basenames = [parse_task_name_from_script(script)]
     else:

@@ -96,7 +96,7 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
         name=module.SETUP_REGISTRY_NAME, is_type=True
     ).one_or_none()
     task = FakeRecord.filter(
-        name="test_01_create_fasta_for_favorite_protein.py", is_type=True, type=registry
+        name="01_create_fasta_for_favorite_protein", is_type=True, type=registry
     ).one_or_none()
 
     assert schema is not None
@@ -146,4 +146,4 @@ def test_setup_collects_task_scripts_from_cwd(tmp_path: Path, monkeypatch) -> No
 
     setup(verbose=False)
 
-    assert captured["task_names"] == ["test_01.py", "test_02.py"]
+    assert captured["task_names"] == ["01", "02"]
