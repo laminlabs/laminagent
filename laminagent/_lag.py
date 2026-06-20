@@ -256,8 +256,7 @@ def _log_gemini_usage_record(
 ) -> None:
     if usage["n_call_count"] <= 0:
         return
-    package_name = Path.cwd().name.replace("-", "_")
-    task = ensure_eval_task(package_name=package_name, task_name=task_name)
+    task = ensure_eval_task(task_name=task_name)
     ln.Record(
         features={
             "package_version": package_version,

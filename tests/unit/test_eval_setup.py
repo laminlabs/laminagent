@@ -83,12 +83,10 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     module = importlib.import_module("laminagent._eval_setup")
 
     module.setup(
-        package_name="example_pkg",
         script_basenames=["test_01_create_fasta_for_favorite_protein.py"],
         verbose=False,
     )
     module.setup(
-        package_name="example_pkg",
         script_basenames=["test_01_create_fasta_for_favorite_protein.py"],
         verbose=False,
     )
@@ -97,11 +95,8 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     registry = FakeRecord.filter(
         name=module.EVAL_REGISTRY_NAME, is_type=True
     ).one_or_none()
-    package = FakeRecord.filter(
-        name="example_pkg", is_type=True, type=registry
-    ).one_or_none()
     task = FakeRecord.filter(
-        name="test_01_create_fasta_for_favorite_protein.py", is_type=True, type=package
+        name="test_01_create_fasta_for_favorite_protein.py", is_type=True, type=registry
     ).one_or_none()
 
     assert schema is not None
@@ -118,8 +113,6 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     }
     assert registry is not None
     assert registry.schema is schema
-    assert package is not None
-    assert package.schema is schema
     assert task is not None
     assert task.schema is schema
 
@@ -137,8 +130,7 @@ def test_setup_from_script_or_cwd_collects_example_scripts(
 
     captured: dict[str, object] = {}
 
-    def _fake_setup(*, package_name, script_basenames, verbose=True):
-        captured["package_name"] = package_name
+    def _fake_setup(*, script_basenames, verbose=True):
         captured["script_basenames"] = script_basenames
         captured["verbose"] = verbose
 
@@ -149,5 +141,4 @@ def test_setup_from_script_or_cwd_collects_example_scripts(
 
     setup_from_script_or_cwd(None)
 
-    assert captured["package_name"] == "laminagent"
     assert captured["script_basenames"] == ["test_01.py", "test_02.py"]

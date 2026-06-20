@@ -52,9 +52,8 @@ lag eval setup
 
 When run from a repository root, this command:
 
-- creates or reuses schema `laminprofiler`
-- creates or reuses top-level eval type `LaminAgentEval`
-- creates or reuses package type (`<repo_name>`, normalized with `_`)
+- creates or reuses schema `laminagent_eval`
+- creates or reuses top-level eval type `LaminAgent`
 - creates or reuses task types for `tests/examples/*.py` (excluding `conftest.py` and `testutils.py`)
 
 You can also set up a single eval script:
