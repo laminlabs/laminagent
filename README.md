@@ -28,6 +28,12 @@ lag --prompt "Write a text file with 'Hello agent!' in it, please"
 
 You can explore runnable example scenarios in `tests/examples`.
 
+Before logging eval telemetry as records, initialize eval registry types:
+
+```bash
+lag eval setup
+```
+
 ## Modes
 
 ### Default mode (execute only)
@@ -35,6 +41,27 @@ You can explore runnable example scenarios in `tests/examples`.
 - If a tool exists (`tool.md` or latest `tool_*.md`, or `--tool-file`), `lag` executes the referenced runnable tools.
 - Otherwise, `lag` executes existing runnable tools referenced in `--prompt` (explicit `.py` key or path).
 - Default mode does not create or update tools. If a referenced tool is missing, it fails with a clear error.
+
+### Eval setup mode (`eval setup`)
+
+Create or refresh eval record types used for record-based telemetry:
+
+```bash
+lag eval setup
+```
+
+When run from a repository root, this command:
+
+- creates or reuses schema `laminprofiler`
+- creates or reuses top-level eval type `LaminAgentEval`
+- creates or reuses package type (`<repo_name>`, normalized with `_`)
+- creates or reuses task types for `tests/examples/*.py` (excluding `conftest.py` and `testutils.py`)
+
+You can also set up a single eval script:
+
+```bash
+lag eval setup tests/examples/test_01_create_fasta_for_favorite_protein.py
+```
 
 ### Planning mode (`--tool`)
 
@@ -62,3 +89,16 @@ When `lag` executes scripts, it propagates:
 - `LAMIN_CURRENT_PROJECT` (if `--project` is provided)
 
 `lag` itself does not directly create output artifacts; produced outputs are tracked by executed tool code.
+
+## Eval Telemetry Persistence
+
+In `--tool` mode, laminagent now stores telemetry as records (similar to laminprofiler), rather than annotating run features directly. Logged record features include:
+
+- `package_version`
+- `duration_in_sec`
+- `commit_hash16`
+- `runner_env`
+- `n_call_count`
+- `n_prompt_tokens`
+- `n_output_tokens`
+- `n_total_tokens`

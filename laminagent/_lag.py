@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +15,7 @@ from lamin_utils import logger
 
 from ._agent import run_agent
 from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
+from ._eval_setup import ensure_eval_task, setup_from_script_or_cwd
 from ._output_saver import save_generated_tool_files
 from ._run_context import RunContext, create_run_uid
 
@@ -218,38 +222,55 @@ def _normalize_gemini_usage(payload: object) -> dict[str, int]:
     return usage
 
 
-def _ensure_laminagent_usage_features() -> dict[str, ln.Feature]:
-    laminagent_feature_type = ln.Feature.filter(
-        name="laminagent", is_type=True
-    ).one_or_none()
-    if laminagent_feature_type is None:
-        laminagent_feature_type = ln.Feature(
-            name="laminagent",
-            description="Auto-generated features tracking laminagent usage",
-            is_type=True,
-        )
-        laminagent_feature_type.save()
-
-    features: dict[str, ln.Feature] = {}
-    for key in _USAGE_FEATURES_NAMES:
-        feature = ln.Feature.filter(
-            name=key, type=laminagent_feature_type
-        ).one_or_none()
-        if feature is None:
-            feature = ln.Feature(
-                name=key, dtype=int, type=laminagent_feature_type
-            ).save()
-        features[key] = feature
-    return features
+def _current_commit_hash16() -> str | None:
+    try:
+        commit_hash = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return commit_hash[:16] if commit_hash else None
 
 
-def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
+def _current_runner_env() -> str | None:
+    if (
+        os.getenv("GITHUB_ACTIONS") == "true"
+        and os.getenv("RUNNER_ENVIRONMENT") == "github-hosted"
+    ):
+        return "github_hosted"
+    return None
+
+
+def _record_usage_task_name(generated_path: str | None) -> str:
+    if generated_path:
+        return Path(generated_path).name
+    return "lag_tool_mode.py"
+
+
+def _log_gemini_usage_record(
+    usage: dict[str, int],
+    *,
+    package_version: str,
+    duration_in_sec: float,
+    task_name: str,
+) -> None:
     if usage["n_call_count"] <= 0:
         return
-    feature_by_key = _ensure_laminagent_usage_features()
-    ln.context.run.features.add_values(
-        {feature_by_key[key]: value for key, value in usage.items()}
-    )
+    package_name = Path.cwd().name.replace("-", "_")
+    task = ensure_eval_task(package_name=package_name, task_name=task_name)
+    ln.Record(
+        features={
+            "package_version": package_version,
+            "duration_in_sec": duration_in_sec,
+            "commit_hash16": _current_commit_hash16(),
+            "runner_env": _current_runner_env(),
+            "n_call_count": usage["n_call_count"],
+            "n_prompt_tokens": usage["n_prompt_tokens"],
+            "n_output_tokens": usage["n_output_tokens"],
+            "n_total_tokens": usage["n_total_tokens"],
+        },
+        type=task,
+    ).save()
 
 
 def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
@@ -260,6 +281,13 @@ def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
     _echo_key_value("n_prompt_tokens", str(usage["n_prompt_tokens"]))
     _echo_key_value("n_output_tokens", str(usage["n_output_tokens"]))
     _echo_key_value("n_total_tokens", str(usage["n_total_tokens"]), value_color="cyan")
+
+
+def _current_package_version() -> str:
+    try:
+        return version("laminagent")
+    except PackageNotFoundError:
+        return "0.0.0"
 
 
 def run_agent_mode(
@@ -290,12 +318,14 @@ def run_agent_mode(
         model=model,
         track_outputs=track_outputs,
     )
+    start = time.perf_counter()
     result = run_agent(
         api_key=api_key,
         run_context=run_context,
         output_file=output_path,
         progress_callback=_progress,
     )
+    elapsed = time.perf_counter() - start
 
     generated_file = result.get("generated_file")
     generated_files = [
@@ -318,6 +348,7 @@ def run_agent_mode(
         "generated_paths": ",".join(generated_files),
         "final_text": str(result.get("final_text", "") or "").strip(),
         "llm_usage": _normalize_gemini_usage(result.get("llm_usage")),
+        "duration_in_sec": elapsed,
     }
 
 
@@ -377,8 +408,9 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
     }
 
 
-@click.command()
-@click.option("--prompt", required=True, type=str, help="User prompt.")
+@click.group(invoke_without_command=True)
+@click.pass_context
+@click.option("--prompt", required=False, type=str, help="User prompt.")
 @click.option(
     "--tool",
     "tool_mode",
@@ -407,7 +439,8 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
 )
 @ln.flow("wDJpT3xdqjY8")
 def lag(
-    prompt: str,
+    ctx: click.Context,
+    prompt: str | None,
     tool_mode: bool,
     output_file: Path | None,
     model: str,
@@ -416,17 +449,33 @@ def lag(
     project: str | None,
 ) -> None:
     """LAG CLI."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if not prompt:
+        raise click.UsageError(
+            "`--prompt` is required for default lag mode; use `lag eval setup` for eval setup."
+        )
+    prompt_text = prompt
+
     _warn_if_missing_project(project)
     if tool_mode:
         outcome = run_agent_mode(
             mode="tool",
-            prompt=prompt,
+            prompt=prompt_text,
             output_file=output_file,
             model=model,
             track_outputs=not no_track,
         )
         gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
-        _log_gemini_usage_to_run_features(gemini_usage)
+        _log_gemini_usage_record(
+            gemini_usage,
+            package_version=_current_package_version(),
+            duration_in_sec=float(outcome.get("duration_in_sec", 0.0) or 0.0),
+            task_name=_record_usage_task_name(
+                str(outcome.get("generated_path") or "") or None
+            ),
+        )
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
         _print_gemini_usage_summary(gemini_usage)
@@ -444,7 +493,7 @@ def lag(
     chosen_tool_file = find_tool_file(tool_file)
     if chosen_tool_file is not None:
         outcome = execute_the_tool(
-            prompt=prompt,
+            prompt=prompt_text,
             tool_file=chosen_tool_file,
         )
         _echo_section("Run")
@@ -453,7 +502,7 @@ def lag(
         _secho(str(outcome["final_text"]), dim=True)
         return
 
-    outcome = execute_existing_from_prompt(prompt)
+    outcome = execute_existing_from_prompt(prompt_text)
     _echo_section("Run")
     _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
     if outcome["resolved_paths"]:
@@ -471,3 +520,19 @@ def lag(
     if outcome["final_text"]:
         _echo_section("Model Output")
         _secho(str(outcome["final_text"]), dim=True)
+
+
+@lag.group("eval")
+def eval_group() -> None:
+    """Eval-related commands."""
+
+
+@eval_group.command("setup")
+@click.argument(
+    "script",
+    required=False,
+    type=click.Path(path_type=Path, exists=True),
+)
+def eval_setup_command(script: Path | None) -> None:
+    """Set up laminagent eval registry and schema."""
+    setup_from_script_or_cwd(script)
