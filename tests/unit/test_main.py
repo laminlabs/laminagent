@@ -1,21 +1,49 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING
 
 import click
 import pytest
+from click.testing import CliRunner
 from laminagent._lag import (
     _extract_runnable_keys_from_prompt,
+    _log_gemini_usage_record,
     _parse_generated_paths,
     _print_generated_tool_contents,
     _resolve_prompt_runnable_paths,
     _set_current_project_env,
     _warn_if_missing_project,
+    lag,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@pytest.fixture(autouse=True)
+def _clear_lamin_current_project(monkeypatch) -> None:
+    monkeypatch.delenv("LAMIN_CURRENT_PROJECT", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _stub_setup(monkeypatch) -> None:
+    monkeypatch.setattr("laminagent._lag.setup", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
+def _bypass_lag_flow_wrapper(monkeypatch) -> None:
+    callback = lag.callback
+    unwrapped_callback = callback
+    while hasattr(unwrapped_callback, "__wrapped__"):
+        unwrapped_callback = unwrapped_callback.__wrapped__
+
+    def _callback_without_flow(*args, **kwargs):
+        ctx = click.get_current_context()
+        return unwrapped_callback(ctx, *args, **kwargs)
+
+    monkeypatch.setattr(lag, "callback", _callback_without_flow)
 
 
 def test_parse_generated_paths_filters_empty_entries(tmp_path: Path) -> None:
@@ -70,3 +98,137 @@ def test_resolve_prompt_runnable_paths_requires_explicit_key() -> None:
         click.ClickException, match="Default mode executes existing tools only"
     ):
         _resolve_prompt_runnable_paths("please rerun the tool")
+
+
+def test_lag_setup_routes_to_setup_handler(monkeypatch) -> None:
+    called: dict[str, Path | None] = {}
+
+    def _fake_setup(script: Path | None) -> None:
+        called["script"] = script
+
+    monkeypatch.setattr("laminagent._lag.setup", _fake_setup)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["setup"])
+
+    assert result.exit_code == 0
+    assert called["script"] is None
+
+
+def test_lag_setup_accepts_script_argument(tmp_path: Path, monkeypatch) -> None:
+    script = tmp_path / "tests" / "tasks" / "test_01.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("print('ok')\n", encoding="utf-8")
+    called: dict[str, Path | None] = {}
+
+    def _fake_setup(*, script: Path | None = None, **_kwargs) -> None:
+        called["script"] = script
+
+    monkeypatch.setattr("laminagent._lag.setup", _fake_setup)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["setup", str(script)])
+
+    assert result.exit_code == 0
+    assert called["script"] == script
+
+
+def test_lag_default_mode_still_requires_prompt() -> None:
+    runner = CliRunner()
+    result = runner.invoke(lag, [])
+    assert result.exit_code != 0
+    assert "--prompt" in result.output
+
+
+def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
+    monkeypatch.setattr("laminagent._lag.setup", lambda *args, **kwargs: None)
+
+    def _fake_execute(prompt: str) -> dict[str, str | None]:
+        assert prompt == "run test-lag/create_fasta.py"
+        return {
+            "run_uid": "run-1",
+            "resolved_paths": "",
+            "final_text": "done",
+        }
+
+    monkeypatch.setattr("laminagent._lag.execute_existing_from_prompt", _fake_execute)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--prompt", "run test-lag/create_fasta.py"])
+
+    assert result.exit_code == 0
+    clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "run_uid=run-1" in clean_output
+
+
+def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
+    class FakeTask:
+        schema_id = 1
+
+    class FakeRecord:
+        payload = None
+
+        def __init__(self, *, features, type):
+            self.features = features
+            self.type = type
+
+        def save(self):
+            FakeRecord.payload = {"features": self.features, "type": self.type}
+            return self
+
+    monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: FakeTask())
+    monkeypatch.setattr("laminagent._lag.ln.Record", FakeRecord)
+    monkeypatch.setattr("laminagent._lag._current_commit_hash16", lambda: "abc123")
+    monkeypatch.setattr("laminagent._lag._current_runner_env", lambda: "github_hosted")
+
+    _log_gemini_usage_record(
+        {
+            "n_call_count": 1,
+            "n_prompt_tokens": 2,
+            "n_output_tokens": 3,
+            "n_total_tokens": 5,
+        },
+        package_version="0.1.0",
+        duration_in_sec=0.2,
+        task_name="tool.py",
+    )
+
+    assert FakeRecord.payload is not None
+    assert FakeRecord.payload["type"].schema_id == 1
+    assert FakeRecord.payload["features"]["package_version"] == "0.1.0"
+    assert FakeRecord.payload["features"]["n_total_tokens"] == 5
+
+
+def test_log_gemini_usage_record_requires_configured_task(monkeypatch) -> None:
+    monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: None)
+
+    with pytest.raises(click.ClickException, match="Please run `lag setup` first"):
+        _log_gemini_usage_record(
+            {
+                "n_call_count": 1,
+                "n_prompt_tokens": 2,
+                "n_output_tokens": 3,
+                "n_total_tokens": 5,
+            },
+            package_version="0.1.0",
+            duration_in_sec=0.2,
+            task_name="tool",
+        )
+
+
+def test_record_usage_task_name_prefers_pytest_task_context(monkeypatch) -> None:
+    from laminagent._lag import _record_usage_task_name
+
+    monkeypatch.setenv(
+        "PYTEST_CURRENT_TEST",
+        "tests/tasks/test_01_create_fasta_for_favorite_protein.py::test_create_favorite_protein_sequence (call)",
+    )
+
+    task_name = _record_usage_task_name("save_protein.py")
+    assert task_name == "01_create_fasta_for_favorite_protein"
+
+
+def test_record_usage_task_name_falls_back_to_generated_script(monkeypatch) -> None:
+    from laminagent._lag import _record_usage_task_name
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    task_name = _record_usage_task_name("save_protein.py")
+    assert task_name == "save_protein"

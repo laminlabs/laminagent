@@ -14,9 +14,9 @@ def lint(session: nox.Session) -> None:
 
 
 @nox.session()
-@nox.parametrize("group", ["unit", "examples"])
+@nox.parametrize("group", ["unit", "tasks"])
 def test(session: nox.Session, group: str) -> None:
-    if group == "examples":
+    if group == "tasks":
         coverage_args = []
         session.run("pip", "install", "anndata", external=True)
     else:
