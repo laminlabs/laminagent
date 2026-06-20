@@ -17,7 +17,7 @@ from ._agent import run_agent
 from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
 from ._output_saver import save_generated_tool_files
 from ._run_context import RunContext, create_run_uid
-from .setup import ensure_task, setup
+from ._setup import ensure_task, setup
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")

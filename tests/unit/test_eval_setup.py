@@ -79,8 +79,8 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     )
 
     monkeypatch.setitem(sys.modules, "lamindb", fake_ln)
-    sys.modules.pop("laminagent.setup", None)
-    module = importlib.import_module("laminagent.setup")
+    sys.modules.pop("laminagent._setup", None)
+    module = importlib.import_module("laminagent._setup")
 
     module.setup(
         script_basenames=["test_01_create_fasta_for_favorite_protein.py"],
@@ -129,18 +129,20 @@ def test_setup_collects_task_scripts_from_cwd(tmp_path: Path, monkeypatch) -> No
     captured: dict[str, object] = {}
 
     monkeypatch.chdir(package_dir)
-    from laminagent.setup import setup
+    from laminagent._setup import setup
 
-    monkeypatch.setattr("laminagent.setup.get_or_create_schema", lambda: object())
+    monkeypatch.setattr("laminagent._setup.get_or_create_schema", lambda: object())
     monkeypatch.setattr(
-        "laminagent.setup.get_or_create_registry", lambda _schema: object()
+        "laminagent._setup.get_or_create_registry", lambda _schema: object()
     )
 
     def _fake_get_or_create_task(task_name, registry, schema):
         captured.setdefault("task_names", []).append(task_name)
         return object()
 
-    monkeypatch.setattr("laminagent.setup.get_or_create_task", _fake_get_or_create_task)
+    monkeypatch.setattr(
+        "laminagent._setup.get_or_create_task", _fake_get_or_create_task
+    )
 
     setup(verbose=False)
 

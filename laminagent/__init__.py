@@ -3,6 +3,6 @@
 __version__ = "0.1.0"
 
 from ._lag import lag
-from .setup import setup
+from ._setup import setup
 
 __all__ = ["lag", "setup"]

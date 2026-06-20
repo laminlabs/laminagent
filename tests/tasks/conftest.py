@@ -4,7 +4,7 @@ from pathlib import Path
 
 import lamindb as ln
 import pytest
-from laminagent.setup import setup as laminagent_setup
+from laminagent._setup import setup as laminagent_setup
 from testutils import TESTDB1_DEV_DIR, TESTDB1_NAME, TESTDB1_STORAGE
 
 
