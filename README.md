@@ -34,7 +34,7 @@ Before running `lag`, you can initialize LagEval registry types manually:
 lag setup
 ```
 
-`lag` also initializes these records automatically on normal runs.
+If these records are missing, run `lag setup` before using `lag --tool`.
 
 ## Modes
 

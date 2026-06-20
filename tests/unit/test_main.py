@@ -159,6 +159,9 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
 
 
 def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
+    class FakeTask:
+        schema_id = 1
+
     class FakeRecord:
         payload = None
 
@@ -170,7 +173,7 @@ def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
             FakeRecord.payload = {"features": self.features, "type": self.type}
             return self
 
-    monkeypatch.setattr("laminagent._lag.ensure_task", lambda **_kwargs: "task")
+    monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: FakeTask())
     monkeypatch.setattr("laminagent._lag.ln.Record", FakeRecord)
     monkeypatch.setattr("laminagent._lag._current_commit_hash16", lambda: "abc123")
     monkeypatch.setattr("laminagent._lag._current_runner_env", lambda: "github_hosted")
@@ -188,6 +191,44 @@ def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
     )
 
     assert FakeRecord.payload is not None
-    assert FakeRecord.payload["type"] == "task"
+    assert FakeRecord.payload["type"].schema_id == 1
     assert FakeRecord.payload["features"]["package_version"] == "0.1.0"
     assert FakeRecord.payload["features"]["n_total_tokens"] == 5
+
+
+def test_log_gemini_usage_record_requires_configured_task(monkeypatch) -> None:
+    monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: None)
+
+    with pytest.raises(click.ClickException, match="Please run `lag setup` first"):
+        _log_gemini_usage_record(
+            {
+                "n_call_count": 1,
+                "n_prompt_tokens": 2,
+                "n_output_tokens": 3,
+                "n_total_tokens": 5,
+            },
+            package_version="0.1.0",
+            duration_in_sec=0.2,
+            task_name="tool",
+        )
+
+
+def test_record_usage_task_name_prefers_pytest_task_context(monkeypatch) -> None:
+    from laminagent._lag import _record_usage_task_name
+
+    monkeypatch.setenv(
+        "PYTEST_CURRENT_TEST",
+        "tests/tasks/test_01_create_fasta_for_favorite_protein.py::test_create_favorite_protein_sequence (call)",
+    )
+
+    task_name = _record_usage_task_name("save_protein.py")
+    assert task_name == "01_create_fasta_for_favorite_protein"
+
+
+def test_record_usage_task_name_falls_back_to_generated_script(monkeypatch) -> None:
+    from laminagent._lag import _record_usage_task_name
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    task_name = _record_usage_task_name("save_protein.py")
+    assert task_name == "save_protein"
