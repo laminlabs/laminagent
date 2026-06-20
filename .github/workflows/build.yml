@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [unit, examples]
+        group: [unit, tasks]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - run: nox -s lint
       - run: uv pip install --system -e .[dev]
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.group == 'examples'
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.group == 'tasks'
         env:
           LAMIN_API_KEY: ${{ secrets.LAMIN_API_KEY_TESTUSER1 }}
         run: lamin login && lamin connect laminlabs/lamindata

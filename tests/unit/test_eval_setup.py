@@ -117,16 +117,16 @@ def test_setup_creates_eval_registry_with_expected_schema(monkeypatch) -> None:
     assert task.schema is schema
 
 
-def test_setup_from_script_or_cwd_collects_example_scripts(
+def test_setup_from_script_or_cwd_collects_task_scripts(
     tmp_path: Path, monkeypatch
 ) -> None:
     package_dir = tmp_path / "laminagent"
-    examples_dir = package_dir / "tests" / "examples"
-    examples_dir.mkdir(parents=True)
-    (examples_dir / "test_01.py").write_text("print('a')\n", encoding="utf-8")
-    (examples_dir / "test_02.py").write_text("print('b')\n", encoding="utf-8")
-    (examples_dir / "conftest.py").write_text("", encoding="utf-8")
-    (examples_dir / "testutils.py").write_text("", encoding="utf-8")
+    tasks_dir = package_dir / "tests" / "tasks"
+    tasks_dir.mkdir(parents=True)
+    (tasks_dir / "test_01.py").write_text("print('a')\n", encoding="utf-8")
+    (tasks_dir / "test_02.py").write_text("print('b')\n", encoding="utf-8")
+    (tasks_dir / "conftest.py").write_text("", encoding="utf-8")
+    (tasks_dir / "testutils.py").write_text("", encoding="utf-8")
 
     captured: dict[str, object] = {}
 

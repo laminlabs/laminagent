@@ -72,7 +72,7 @@ def ensure_eval_task(task_name: str) -> ln.Record:
 
 def parse_task_name_from_script(script: Path) -> str:
     script = script.resolve()
-    assert script.parent.name == "examples"
+    assert script.parent.name == "tasks"
     assert script.parent.parent.name == "tests"
     return script.name
 
@@ -98,10 +98,10 @@ def setup_from_script_or_cwd(script: Path | None) -> None:
         setup(script_basenames=[script_basename])
         return
 
-    examples_dir = Path.cwd() / "tests" / "examples"
+    tasks_dir = Path.cwd() / "tests" / "tasks"
     script_basenames = sorted(
         path.name
-        for path in examples_dir.glob("*.py")
+        for path in tasks_dir.glob("*.py")
         if path.is_file() and path.name != "conftest.py" and path.name != "testutils.py"
     )
     setup(script_basenames=script_basenames)

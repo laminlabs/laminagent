@@ -26,7 +26,7 @@ Run in default mode:
 lag --prompt "Write a text file with 'Hello agent!' in it, please"
 ```
 
-You can explore runnable example scenarios in `tests/examples`.
+You can explore runnable example scenarios in `tests/tasks`.
 
 Before logging eval telemetry as records, initialize eval registry types:
 
@@ -54,12 +54,12 @@ When run from a repository root, this command:
 
 - creates or reuses schema `laminagent_eval`
 - creates or reuses top-level eval type `LaminAgent`
-- creates or reuses task types for `tests/examples/*.py` (excluding `conftest.py` and `testutils.py`)
+- creates or reuses task types for `tests/tasks/*.py` (excluding `conftest.py` and `testutils.py`)
 
 You can also set up a single eval script:
 
 ```bash
-lag eval setup tests/examples/test_01_create_fasta_for_favorite_protein.py
+lag eval setup tests/tasks/test_01_create_fasta_for_favorite_protein.py
 ```
 
 ### Planning mode (`--tool`)

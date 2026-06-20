@@ -95,7 +95,7 @@ def test_lag_eval_setup_routes_to_setup_handler(monkeypatch) -> None:
 
 
 def test_lag_eval_setup_accepts_script_argument(tmp_path: Path, monkeypatch) -> None:
-    script = tmp_path / "tests" / "examples" / "test_01.py"
+    script = tmp_path / "tests" / "tasks" / "test_01.py"
     script.parent.mkdir(parents=True)
     script.write_text("print('ok')\n", encoding="utf-8")
     called: dict[str, Path | None] = {}
