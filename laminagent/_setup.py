@@ -115,4 +115,4 @@ def setup(
         get_or_create_task(task_basename, registry=registry, schema=schema)
 
     if verbose:
-        print(f"Created LagEval registry with {len(task_basenames)} tasks.")
+        print(f"Configured LagEval registry with {len(task_basenames)} tasks.")
