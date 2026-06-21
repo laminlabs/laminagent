@@ -20,8 +20,10 @@ RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
 
 def test_bionty_basic(setup_testdb1) -> None:
     """Sanity-check: can bionty look up 'B cell' from the Cell Ontology source?"""
-    record = bt.CellType.from_source(name="B cell")
-    assert record is not None
+    df = bt.CellType.public().to_dataframe()
+    print(df)
+    print(df.loc[df["name"].str.startswith("B cell")])
+    assert "B cell" in df["name"].values
 
 
 def test_schema_setup(setup_testdb1) -> None:
