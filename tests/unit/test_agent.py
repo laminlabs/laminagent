@@ -316,6 +316,15 @@ def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
         "n_output_tokens": 7,
         "n_total_tokens": 18,
     }
+    assert any(
+        event.get("event") == "llm_request" and "request_payload" in event
+        for event in result["trace_events"]
+    )
+    assert any(
+        event.get("event") == "llm_response"
+        and event.get("usage_metadata", {}).get("totalTokenCount") == 18
+        for event in result["trace_events"]
+    )
 
 
 def test_run_agent_handles_missing_usage_metadata(monkeypatch) -> None:
