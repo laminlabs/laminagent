@@ -196,21 +196,24 @@ def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
     assert FakeRecord.payload["features"]["n_total_tokens"] == 5
 
 
-def test_log_gemini_usage_record_requires_configured_task(monkeypatch) -> None:
+def test_log_gemini_usage_record_skips_when_task_not_configured(monkeypatch) -> None:
     monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: None)
+    warnings: list[str] = []
+    monkeypatch.setattr("laminagent._lag._echo_warning", warnings.append)
 
-    with pytest.raises(click.ClickException, match="Please run `lag setup` first"):
-        _log_gemini_usage_record(
-            {
-                "n_call_count": 1,
-                "n_prompt_tokens": 2,
-                "n_output_tokens": 3,
-                "n_total_tokens": 5,
-            },
-            package_version="0.1.0",
-            duration_in_sec=0.2,
-            task_name="tool",
-        )
+    _log_gemini_usage_record(
+        {
+            "n_call_count": 1,
+            "n_prompt_tokens": 2,
+            "n_output_tokens": 3,
+            "n_total_tokens": 5,
+        },
+        package_version="0.1.0",
+        duration_in_sec=0.2,
+        task_name="tool",
+    )
+    assert warnings
+    assert "not configured" in warnings[0]
 
 
 def test_record_usage_task_name_prefers_pytest_task_context(monkeypatch) -> None:

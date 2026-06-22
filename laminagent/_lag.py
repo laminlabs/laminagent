@@ -265,10 +265,11 @@ def _log_gemini_usage_record(
         return
     task = get_task(task_name=task_name)
     if task is None or task.schema_id is None:
-        raise click.ClickException(
-            f"LagEval task registry '{task_name}' is not configured. "
-            "Please run `lag setup` first."
+        _echo_warning(
+            f"LagEval task registry '{task_name}' is not configured; "
+            "skipping LagEval usage record (run `lag setup` to enable it)."
         )
+        return
     ln.Record(
         features={
             "package_version": package_version,
