@@ -9,6 +9,7 @@ import pytest
 from click.testing import CliRunner
 from laminagent._lag import (
     _extract_runnable_keys_from_prompt,
+    _format_progress_message_for_log,
     _log_gemini_usage_record,
     _parse_generated_paths,
     _print_generated_tool_contents,
@@ -267,6 +268,23 @@ def test_redact_payload_masks_known_secret_keys() -> None:
     assert redacted["api_key"] == "***REDACTED***"
     assert isinstance(redacted["nested"], dict)
     assert redacted["nested"]["authorization"] == "***REDACTED***"
+
+
+def test_format_progress_message_for_log_summarizes_tool_payload() -> None:
+    message = (
+        'step 1: tool result payload={"message":"Found 5 LaminDB matches for '
+        '\\"artifact\\".","results":[{"type":"artifact","key":"a"},{"type":"artifact","key":"b"}]}'
+    )
+    formatted = _format_progress_message_for_log(message)
+    assert "step 1: tool result payload:" in formatted
+    assert 'Found 5 LaminDB matches for "artifact".' in formatted
+    assert "results: 2" in formatted
+
+
+def test_format_progress_message_for_log_summarizes_tool_call_args() -> None:
+    message = 'step 2: tool call -> get_lamindb_skill args={"key":"artifact"}'
+    formatted = _format_progress_message_for_log(message)
+    assert formatted == "step 2: tool call -> get_lamindb_skill (key='artifact')"
 
 
 def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:

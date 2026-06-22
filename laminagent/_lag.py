@@ -95,6 +95,13 @@ def _json_dumps(payload: object) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
 
 
+def _parse_json_payload(payload_str: str) -> object | None:
+    try:
+        return json.loads(payload_str)
+    except json.JSONDecodeError:
+        return None
+
+
 def _truncate(value: str, *, max_chars: int = 6000) -> str:
     if len(value) <= max_chars:
         return value
@@ -156,6 +163,126 @@ def _collect_tool_key_counts(trace_events: list[dict[str, Any]]) -> dict[str, in
     return counts
 
 
+def _summarize_tool_result_payload(payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return [str(payload)]
+    lines: list[str] = []
+    message = payload.get("message")
+    if isinstance(message, str) and message.strip():
+        lines.append(message.strip())
+
+    status = payload.get("status")
+    if isinstance(status, str) and status.strip():
+        lines.append(f"status: {status.strip()}")
+
+    if isinstance(payload.get("file"), str):
+        lines.append(f"file: {payload['file']}")
+    if isinstance(payload.get("key"), str) and payload.get("key"):
+        lines.append(f"query key: {payload['key']}")
+
+    searched = payload.get("searched_instances")
+    if isinstance(searched, list) and searched:
+        lines.append(f"searched instances: {', '.join(str(item) for item in searched)}")
+
+    results = payload.get("results")
+    if isinstance(results, list):
+        lines.append(f"results: {len(results)}")
+        for idx, item in enumerate(results[:3], start=1):
+            if not isinstance(item, dict):
+                lines.append(f"  {idx}. {str(item)[:120]}")
+                continue
+            item_type = str(item.get("type", "result"))
+            item_key = str(item.get("key", "") or item.get("uid", ""))
+            description = str(item.get("description", "")).strip()
+            descriptor = f"{item_type}: {item_key}".strip(": ")
+            if description:
+                lines.append(f"  {idx}. {descriptor} — {description[:120]}")
+            else:
+                lines.append(f"  {idx}. {descriptor}")
+        if len(results) > 3:
+            lines.append(f"  ... and {len(results) - 3} more")
+
+    matches = payload.get("matches")
+    if isinstance(matches, list):
+        lines.append(f"matches: {len(matches)}")
+        for idx, item in enumerate(matches[:3], start=1):
+            lines.append(f"  {idx}. {str(item)[:120]}")
+        if len(matches) > 3:
+            lines.append(f"  ... and {len(matches) - 3} more")
+
+    warnings = payload.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        lines.append(f"warnings: {len(warnings)}")
+        for warning in warnings[:2]:
+            lines.append(f"  - {str(warning)[:180]}")
+        if len(warnings) > 2:
+            lines.append(f"  ... and {len(warnings) - 2} more")
+
+    if not lines:
+        lines.append("tool returned no additional details")
+    return lines
+
+
+def _summarize_tool_call_args(payload: object) -> str:
+    if not isinstance(payload, dict) or not payload:
+        return "no arguments"
+    key = payload.get("key")
+    topic = payload.get("topic")
+    filename = payload.get("filename")
+    template_path = payload.get("template_path")
+    skills_root = payload.get("skills_root")
+    code = payload.get("code")
+
+    parts: list[str] = []
+    if isinstance(key, str) and key:
+        parts.append(f"key='{key}'")
+    if isinstance(topic, str) and topic:
+        parts.append(f"topic='{topic}'")
+    if isinstance(filename, str) and filename:
+        parts.append(f"filename='{filename}'")
+    if isinstance(template_path, str) and template_path:
+        parts.append(f"template='{template_path}'")
+    if isinstance(skills_root, str) and skills_root:
+        parts.append(f"skills_root='{skills_root}'")
+    if isinstance(code, str):
+        parts.append(f"code_chars={len(code)}")
+    if not parts:
+        parts = [f"{name}={str(value)[:120]}" for name, value in payload.items()]
+    return ", ".join(parts)
+
+
+def _format_tool_call_detail(detail: str) -> tuple[str, str] | None:
+    body = detail.removeprefix("tool call -> ").strip()
+    if " args=" not in body:
+        return body, "no arguments"
+    name, args_str = body.split(" args=", 1)
+    parsed_args = _parse_json_payload(args_str.strip())
+    if parsed_args is None:
+        return name.strip(), args_str.strip()
+    return name.strip(), _summarize_tool_call_args(parsed_args)
+
+
+def _format_progress_message_for_log(message: str) -> str:
+    step_match = _STEP_PATTERN.match(message)
+    if step_match is None:
+        return message
+    step, detail = step_match.groups()
+    if detail.startswith("tool call -> "):
+        formatted = _format_tool_call_detail(detail)
+        if formatted is None:
+            return message
+        name, args_summary = formatted
+        return f"step {step}: tool call -> {name} ({args_summary})"
+    if not detail.startswith("tool result payload="):
+        return message
+    payload_str = detail.removeprefix("tool result payload=")
+    payload = _parse_json_payload(payload_str)
+    if payload is None:
+        return message
+    summary = " | ".join(_summarize_tool_result_payload(payload))
+    return f"step {step}: tool result payload: {summary}"
+
+
 def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> None:
     if not trace_events:
         return
@@ -207,7 +334,7 @@ def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> N
 
 
 def _progress(message: str) -> None:
-    logger.info(message)
+    logger.info(_format_progress_message_for_log(message))
     if message.startswith("mode="):
         pretty_message = message.replace("mode=do", "mode=default")
         _echo_info(pretty_message)
@@ -244,8 +371,14 @@ def _progress(message: str) -> None:
         _secho("model text: ", nl=False, fg="blue")
         _secho(detail.removeprefix("model text: "), dim=True)
     elif detail.startswith("tool call -> "):
-        _secho("tool call -> ", nl=False, fg="magenta")
-        _secho(detail.removeprefix("tool call -> "), dim=True)
+        formatted = _format_tool_call_detail(detail)
+        if formatted is None:
+            _secho("tool call -> ", nl=False, fg="magenta")
+            _secho(detail.removeprefix("tool call -> "), dim=True)
+        else:
+            name, args_summary = formatted
+            _secho(f"tool call -> {name}", fg="magenta")
+            _secho(f" (args: {args_summary})", dim=True)
     elif detail.startswith("wrote file "):
         _secho(detail, fg="green")
     elif detail.startswith("tool result status="):
@@ -262,7 +395,7 @@ def _progress_verbose_live() -> Callable[[str], None]:
 
     def _callback(message: str) -> None:
         nonlocal current_step
-        logger.info(message)
+        logger.info(_format_progress_message_for_log(message))
         if message.startswith("mode="):
             pretty_message = message.replace("mode=do", "mode=default")
             _echo_info(pretty_message)
@@ -305,8 +438,14 @@ def _progress_verbose_live() -> Callable[[str], None]:
             _secho("→ model text: ", nl=False, fg="blue")
             _secho(detail.removeprefix("model text: "), dim=True)
         elif detail.startswith("tool call -> "):
-            _secho("→ tool call -> ", nl=False, fg="magenta")
-            _secho(detail.removeprefix("tool call -> "), dim=True)
+            formatted = _format_tool_call_detail(detail)
+            if formatted is None:
+                _secho("→ tool call -> ", nl=False, fg="magenta")
+                _secho(detail.removeprefix("tool call -> "), dim=True)
+            else:
+                name, args_summary = formatted
+                _secho(f"→ tool call -> {name}", fg="magenta")
+                _secho(f"  args: {args_summary}", dim=True)
         elif detail.startswith("wrote file "):
             _secho(f"→ {detail}", fg="green")
         elif detail.startswith("tool result status="):
@@ -316,8 +455,13 @@ def _progress_verbose_live() -> Callable[[str], None]:
             _secho(status, fg=color)
         elif detail.startswith("tool result payload="):
             payload_str = detail.removeprefix("tool result payload=")
-            _secho("→ tool result payload: ", nl=False, fg="black")
-            _secho(payload_str, dim=True)
+            parsed_payload = _parse_json_payload(payload_str)
+            _secho("→ tool result payload:", fg="black")
+            if parsed_payload is None:
+                _secho(f"  {payload_str}", dim=True)
+            else:
+                for line in _summarize_tool_result_payload(parsed_payload):
+                    _secho(f"  {line}", dim=True)
         else:
             _secho(f"→ {detail}", dim=True)
 
