@@ -502,6 +502,10 @@ def run_agent(
             if progress_callback is not None:
                 status = result.get("status", "ok")
                 progress_callback(f"step {step}: tool result status={status}")
+                progress_callback(
+                    "step "
+                    f"{step}: tool result payload={json.dumps(result, ensure_ascii=False, default=str)}"
+                )
                 if status == "error" and result.get("message"):
                     progress_callback(f"step {step}: tool error: {result['message']}")
                 if result.get("short_circuit_execute") and result.get("message"):

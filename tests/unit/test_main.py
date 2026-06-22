@@ -256,8 +256,8 @@ def test_trace_is_logged_with_redaction(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert logged
-    assert "***REDACTED***" in logged[-1]
-    assert "super-secret" not in logged[-1]
+    assert "lag_trace_summary=" in logged[-1]
+    assert "super-secret" not in "".join(logged)
 
 
 def test_redact_payload_masks_known_secret_keys() -> None:

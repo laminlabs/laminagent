@@ -314,6 +314,10 @@ def _progress_verbose_live() -> Callable[[str], None]:
             color = "green" if status == "success" else "yellow"
             _secho("→ tool result status=", nl=False, fg="black")
             _secho(status, fg=color)
+        elif detail.startswith("tool result payload="):
+            payload_str = detail.removeprefix("tool result payload=")
+            _secho("→ tool result payload: ", nl=False, fg="black")
+            _secho(payload_str, dim=True)
         else:
             _secho(f"→ {detail}", dim=True)
 
@@ -405,6 +409,10 @@ def _warn_if_missing_project(project: str | None) -> None:
         logger.warning("no --project was provided and LAMIN_CURRENT_PROJECT is not set")
 
 
+def _ensure_info_verbosity() -> None:
+    ln.settings.verbosity = "info"
+
+
 def _print_generated_tool_contents(paths: list[Path]) -> None:
     seen: set[Path] = set()
     for path in paths:
@@ -462,12 +470,18 @@ def _record_usage_task_name(generated_path: str | None) -> str:
 
 def _log_trace_payload(payload: dict[str, Any]) -> None:
     redacted = _redact_payload(payload)
-    serialized_payload: dict[str, Any]
-    if isinstance(redacted, dict):
-        serialized_payload = redacted
-    else:
-        serialized_payload = {"payload": redacted}
-    logger.info(f"lag_trace={_json_dumps(serialized_payload)}")
+    if not isinstance(redacted, dict):
+        logger.info("lag_trace_summary=unstructured_payload")
+        return
+    trace_events = redacted.get("trace_events")
+    n_trace_events = len(trace_events) if isinstance(trace_events, list) else 0
+    summary = {
+        "mode": redacted.get("mode"),
+        "run_uid": redacted.get("run_uid"),
+        "model": redacted.get("model"),
+        "n_trace_events": n_trace_events,
+    }
+    logger.info(f"lag_trace_summary={_json_dumps(summary)}")
 
 
 def _log_gemini_usage_record(
@@ -729,6 +743,7 @@ def lag(
         raise click.UsageError(
             "`--prompt` is required for default lag mode; use `lag setup` to initialize setup records."
         )
+    _ensure_info_verbosity()
     prompt_text = prompt
 
     _warn_if_missing_project(project)
