@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 import time
@@ -391,6 +392,13 @@ def run_agent(
             "tools": _tool_payload(run_context.mode),
             "generationConfig": {"temperature": 0.2},
         }
+        trace_events.append(
+            {
+                "step": step,
+                "event": "llm_request",
+                "request_payload": copy.deepcopy(payload),
+            }
+        )
         data = _post_generate_content(
             url=url,
             api_key=api_key,
@@ -413,7 +421,20 @@ def run_agent(
             )
             progress_callback(f"step {step}: model text: {preview}")
 
-        trace_events.append({"step": step, "model_response": response_message})
+        trace_events.append(
+            {
+                "step": step,
+                "event": "llm_response",
+                "response_payload": copy.deepcopy(data),
+                "model_response": copy.deepcopy(response_message),
+                "usage_metadata": (
+                    copy.deepcopy(usage_metadata)
+                    if isinstance(usage_metadata, dict)
+                    else None
+                ),
+                "text": _extract_text(parts),
+            }
+        )
         tool_calls = [p.get("functionCall") for p in parts if "functionCall" in p]
         if not tool_calls:
             final_text = _extract_text(parts)
@@ -432,6 +453,14 @@ def run_agent(
                 progress_callback(
                     f"step {step}: tool call -> {name} args={json.dumps(args)}"
                 )
+            trace_events.append(
+                {
+                    "step": step,
+                    "event": "tool_call",
+                    "tool": name,
+                    "tool_args": copy.deepcopy(args),
+                }
+            )
 
             result = _dispatch_tool(
                 name=name,
@@ -451,9 +480,10 @@ def run_agent(
             trace_events.append(
                 {
                     "step": step,
+                    "event": "tool_result",
                     "tool": name,
-                    "tool_args": args,
-                    "tool_result": result,
+                    "tool_args": copy.deepcopy(args),
+                    "tool_result": copy.deepcopy(result),
                 }
             )
             contents.append(

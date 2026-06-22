@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -12,6 +13,18 @@ import click
 import lamindb as ln
 from dotenv import load_dotenv
 from lamin_utils import logger
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.syntax import Syntax
+
+    _RICH_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional fallback
+    Console = None  # type: ignore[assignment]
+    Panel = None  # type: ignore[assignment]
+    Syntax = None  # type: ignore[assignment]
+    _RICH_AVAILABLE = False
 
 from ._agent import run_agent
 from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
@@ -29,6 +42,17 @@ _USAGE_FEATURES_NAMES = (
     "n_output_tokens",
     "n_total_tokens",
 )
+_TRACE_REDACT_KEYS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "access_token",
+    "refresh_token",
+    "token",
+    "password",
+    "secret",
+    "x-goog-api-key",
+}
 
 
 def _secho(
@@ -62,6 +86,121 @@ def _echo_key_value(key: str, value: str, *, value_color: str | None = None) -> 
     _secho("→ ", nl=False, fg="black")
     _secho(f"{key}=", nl=False, fg="black")
     _secho(value, fg=value_color)
+
+
+def _json_dumps(payload: object) -> str:
+    return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+
+
+def _truncate(value: str, *, max_chars: int = 6000) -> str:
+    if len(value) <= max_chars:
+        return value
+    return f"{value[:max_chars]}\n... [truncated {len(value) - max_chars} chars]"
+
+
+def _redact_payload(payload: object) -> object:
+    if isinstance(payload, dict):
+        redacted: dict[str, object] = {}
+        for key, value in payload.items():
+            normalized = str(key).strip().lower()
+            if normalized in _TRACE_REDACT_KEYS:
+                redacted[key] = "***REDACTED***"
+            else:
+                redacted[key] = _redact_payload(value)
+        return redacted
+    if isinstance(payload, list):
+        return [_redact_payload(item) for item in payload]
+    return payload
+
+
+def _console() -> Console | None:
+    if not _RICH_AVAILABLE:
+        return None
+    assert Console is not None
+    return Console(color_system="auto", no_color=not _COLOR_ENABLED, soft_wrap=True)
+
+
+def _print_rich_json(title: str, payload: object) -> None:
+    console = _console()
+    rendered = _truncate(_json_dumps(_redact_payload(payload)))
+    if console is None:
+        _echo_section(title)
+        _secho(rendered, dim=True)
+        return
+    assert Panel is not None
+    assert Syntax is not None
+    console.print(
+        Panel(
+            Syntax(rendered, "json", word_wrap=True),
+            title=title,
+            border_style="cyan",
+        )
+    )
+
+
+def _collect_tool_key_counts(trace_events: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for event in trace_events:
+        if event.get("event") != "tool_call":
+            continue
+        args = event.get("tool_args", {})
+        if not isinstance(args, dict):
+            continue
+        key = args.get("key")
+        if not isinstance(key, str) or not key.strip():
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> None:
+    if not trace_events:
+        return
+    _echo_section(title)
+    for event in [e for e in trace_events if e.get("step") == 0]:
+        if event.get("event") == "runnables_loaded":
+            _echo_info(f"source={event.get('source')}")
+            _echo_info(f"prompt={event.get('prompt')}")
+            _print_rich_json("Runnables", event.get("runnables_detected", []))
+    steps = sorted(
+        {
+            int(event["step"])
+            for event in trace_events
+            if isinstance(event.get("step"), int) and int(event["step"]) > 0
+        }
+    )
+    if not steps:
+        return
+    for step in steps:
+        _secho(f"\nStep {step}", fg="bright_cyan", bold=True)
+        for event in [e for e in trace_events if e.get("step") == step]:
+            event_type = str(event.get("event", ""))
+            if event_type == "llm_request":
+                _print_rich_json("Request", event.get("request_payload", {}))
+            elif event_type == "llm_response":
+                _print_rich_json("Response", event.get("response_payload", {}))
+                usage = event.get("usage_metadata")
+                if usage:
+                    _print_rich_json("Usage Metadata", usage)
+            elif event_type == "tool_call":
+                _echo_info(f"tool call: {event.get('tool')}")
+                _print_rich_json("Tool Call Args", event.get("tool_args", {}))
+            elif event_type == "tool_result":
+                _echo_info(f"tool result: {event.get('tool')}")
+                _print_rich_json("Tool Result", event.get("tool_result", {}))
+            elif event_type == "runnable_missing":
+                _echo_warning(f"missing runnable: {event.get('path')}")
+            elif event_type == "script_executed":
+                path = str(event.get("path", ""))
+                exit_code = str(event.get("exit_code", ""))
+                _echo_info(f"script: {path} exit_code={exit_code}")
+                _print_rich_json(
+                    "Execution Output",
+                    {
+                        "stdout": event.get("stdout", ""),
+                        "stderr": event.get("stderr", ""),
+                    },
+                )
 
 
 def _progress(message: str) -> None:
@@ -254,6 +393,16 @@ def _record_usage_task_name(generated_path: str | None) -> str:
     return "lag_tool_mode"
 
 
+def _log_trace_payload(payload: dict[str, Any]) -> None:
+    redacted = _redact_payload(payload)
+    serialized_payload: dict[str, Any]
+    if isinstance(redacted, dict):
+        serialized_payload = redacted
+    else:
+        serialized_payload = {"payload": redacted}
+    logger.info(f"lag_trace={_json_dumps(serialized_payload)}")
+
+
 def _log_gemini_usage_record(
     usage: dict[str, int],
     *,
@@ -290,7 +439,9 @@ def _log_gemini_usage_to_run_features(usage: dict[str, int]) -> None:
     ln.context.run.features.add_values(dict(usage))
 
 
-def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
+def _print_gemini_usage_summary(
+    usage: dict[str, int], trace_events: list[dict[str, Any]] | None = None
+) -> None:
     if usage["n_call_count"] <= 0:
         return
     _echo_section("Gemini Usage")
@@ -298,6 +449,27 @@ def _print_gemini_usage_summary(usage: dict[str, int]) -> None:
     _echo_key_value("n_prompt_tokens", str(usage["n_prompt_tokens"]))
     _echo_key_value("n_output_tokens", str(usage["n_output_tokens"]))
     _echo_key_value("n_total_tokens", str(usage["n_total_tokens"]), value_color="cyan")
+    calls = usage["n_call_count"]
+    avg_per_call = usage["n_total_tokens"] / calls if calls else 0.0
+    output_prompt_ratio = (
+        usage["n_output_tokens"] / usage["n_prompt_tokens"]
+        if usage["n_prompt_tokens"] > 0
+        else 0.0
+    )
+    _echo_key_value("avg_tokens_per_call", f"{avg_per_call:.2f}")
+    _echo_key_value("output_prompt_ratio", f"{output_prompt_ratio:.3f}")
+    if trace_events:
+        repeated = sorted(
+            _collect_tool_key_counts(trace_events).items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        if repeated:
+            _echo_key_value(
+                "top_tool_keys",
+                ", ".join(f"{key}({count})" for key, count in repeated[:5]),
+                value_color="magenta",
+            )
 
 
 def _current_package_version() -> str:
@@ -314,6 +486,7 @@ def run_agent_mode(
     output_file: Path | None,
     model: str,
     track_outputs: bool,
+    verbose_llm: bool,
 ) -> dict[str, Any]:
     workspace_env_path = Path("~/llms.env").expanduser()
     load_dotenv(dotenv_path=workspace_env_path)
@@ -340,7 +513,7 @@ def run_agent_mode(
         api_key=api_key,
         run_context=run_context,
         output_file=output_path,
-        progress_callback=_progress,
+        progress_callback=None if verbose_llm else _progress,
     )
     elapsed = time.perf_counter() - start
 
@@ -366,13 +539,14 @@ def run_agent_mode(
         "final_text": str(result.get("final_text", "") or "").strip(),
         "llm_usage": _normalize_gemini_usage(result.get("llm_usage")),
         "duration_in_sec": elapsed,
+        "trace_events": result.get("trace_events", []),
     }
 
 
 def execute_the_tool(
     prompt: str,
     tool_file: Path,
-) -> dict[str, str | None]:
+) -> dict[str, Any]:
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
 
@@ -385,6 +559,7 @@ def execute_the_tool(
         "run_uid": run_uid,
         "tool_path": str(tool_file),
         "final_text": str(result.get("final_text", "")),
+        "trace_events": result.get("trace_events", []),
     }
 
 
@@ -392,7 +567,7 @@ def execute_generated(
     *,
     prompt: str,
     generated_paths_csv: str,
-) -> dict[str, str | None]:
+) -> dict[str, Any]:
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
     runnable_paths = _parse_generated_paths(generated_paths_csv)
@@ -405,10 +580,11 @@ def execute_generated(
     return {
         "run_uid": run_uid,
         "final_text": str(result.get("final_text", "")),
+        "trace_events": result.get("trace_events", []),
     }
 
 
-def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
+def execute_existing_from_prompt(prompt: str) -> dict[str, Any]:
     lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
     run_uid = create_run_uid(lamindb_run_uid)
     runnable_paths = _resolve_prompt_runnable_paths(prompt)
@@ -422,12 +598,20 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
         "run_uid": run_uid,
         "resolved_paths": ",".join(str(path) for path in runnable_paths),
         "final_text": str(result.get("final_text", "")),
+        "trace_events": result.get("trace_events", []),
     }
 
 
 @click.group(invoke_without_command=True)
 @click.pass_context
 @click.option("--prompt", required=False, type=str, help="User prompt.")
+@click.option(
+    "--verbose-llm/--less-verbose",
+    "verbose_llm",
+    default=True,
+    show_default=True,
+    help="Show verbose structured execution trace (default). Use --less-verbose for compact logs.",
+)
 @click.option(
     "--tool",
     "tool_mode",
@@ -458,6 +642,7 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, str | None]:
 def lag(
     ctx: click.Context,
     prompt: str | None,
+    verbose_llm: bool,
     tool_mode: bool,
     output_file: Path | None,
     model: str,
@@ -483,6 +668,7 @@ def lag(
             output_file=output_file,
             model=model,
             track_outputs=not no_track,
+            verbose_llm=verbose_llm,
         )
         gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
         _log_gemini_usage_to_run_features(gemini_usage)
@@ -496,13 +682,31 @@ def lag(
         )
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
-        _print_gemini_usage_summary(gemini_usage)
+        if verbose_llm:
+            _print_verbose_trace(
+                list(outcome.get("trace_events", [])),
+                title="Trace",
+            )
+        _print_gemini_usage_summary(
+            gemini_usage, trace_events=list(outcome.get("trace_events", []))
+        )
         if outcome["generated_path"]:
             _echo_key_value(
                 "generated",
                 str(outcome["generated_path"]),
                 value_color="bright_magenta",
             )
+        _log_trace_payload(
+            {
+                "mode": "tool",
+                "run_uid": str(outcome["run_uid"]),
+                "prompt": prompt_text,
+                "model": model,
+                "trace_events": list(outcome.get("trace_events", [])),
+                "llm_usage": gemini_usage,
+                "final_text": str(outcome.get("final_text", "")),
+            }
+        )
         if outcome["final_text"]:
             _echo_section("Model Output")
             _secho(str(outcome["final_text"]), dim=True)
@@ -517,18 +721,48 @@ def lag(
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
         _echo_key_value("tool", str(outcome["tool_path"]), value_color="magenta")
+        if verbose_llm:
+            _print_verbose_trace(
+                list(outcome.get("trace_events", [])),
+                title="Execution Trace",
+            )
+        _log_trace_payload(
+            {
+                "mode": "tool_file",
+                "run_uid": str(outcome["run_uid"]),
+                "prompt": prompt_text,
+                "tool_path": str(outcome["tool_path"]),
+                "trace_events": list(outcome.get("trace_events", [])),
+                "final_text": str(outcome.get("final_text", "")),
+            }
+        )
         _secho(str(outcome["final_text"]), dim=True)
         return
 
     outcome = execute_existing_from_prompt(prompt_text)
     _echo_section("Run")
     _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
+    if verbose_llm:
+        _print_verbose_trace(
+            list(outcome.get("trace_events", [])),
+            title="Execution Trace",
+        )
     if outcome["resolved_paths"]:
         resolved_paths = _parse_generated_paths(str(outcome["resolved_paths"]))
         for resolved_path in resolved_paths:
             _echo_key_value(
                 "resolved", str(resolved_path), value_color="bright_magenta"
             )
+    _log_trace_payload(
+        {
+            "mode": "default",
+            "run_uid": str(outcome["run_uid"]),
+            "prompt": prompt_text,
+            "resolved_paths": str(outcome.get("resolved_paths", "")),
+            "trace_events": list(outcome.get("trace_events", [])),
+            "final_text": str(outcome.get("final_text", "")),
+        }
+    )
     if outcome.get("generated_path"):
         _echo_key_value(
             "generated",

@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from laminagent._do_executor import execute_tool, extract_runnable_paths, find_tool_file
+from laminagent._do_executor import (
+    execute_runnable_paths,
+    execute_tool,
+    extract_runnable_paths,
+    find_tool_file,
+)
 
 
 def test_extract_runnable_paths(tmp_path: Path) -> None:
@@ -69,3 +74,17 @@ def test_execute_tool_passes_master_run_uid_env_to_python_script(
     ]
     assert len(script_events) == 1
     assert "master-run-uid" in str(script_events[0]["stdout"])
+
+
+def test_execute_runnable_paths_includes_loaded_header_event(tmp_path: Path) -> None:
+    result = execute_runnable_paths(
+        prompt="run these",
+        runnable_paths=[tmp_path / "missing.py"],
+        run_uid="run-1",
+        source="prompt_existing_tools",
+    )
+
+    assert result["trace_events"][0]["event"] == "runnables_loaded"
+    assert result["trace_events"][0]["source"] == "prompt_existing_tools"
+    assert result["trace_events"][0]["prompt"] == "run these"
+    assert result["trace_events"][1]["event"] == "runnable_missing"

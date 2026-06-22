@@ -12,6 +12,7 @@ from laminagent._lag import (
     _log_gemini_usage_record,
     _parse_generated_paths,
     _print_generated_tool_contents,
+    _redact_payload,
     _resolve_prompt_runnable_paths,
     _set_current_project_env,
     _warn_if_missing_project,
@@ -156,6 +157,116 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
     assert result.exit_code == 0
     clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert "run_uid=run-1" in clean_output
+
+
+def test_lag_tool_mode_is_verbose_by_default(monkeypatch) -> None:
+    captured: dict[str, bool] = {}
+
+    def _fake_run_agent_mode(**kwargs):
+        captured["verbose_llm"] = bool(kwargs["verbose_llm"])
+        return {
+            "run_uid": "run-1",
+            "generated_path": None,
+            "generated_paths": "",
+            "final_text": "ok",
+            "llm_usage": {
+                "n_call_count": 1,
+                "n_prompt_tokens": 1,
+                "n_output_tokens": 1,
+                "n_total_tokens": 2,
+            },
+            "duration_in_sec": 0.1,
+            "trace_events": [],
+        }
+
+    monkeypatch.setattr("laminagent._lag.run_agent_mode", _fake_run_agent_mode)
+    monkeypatch.setattr(
+        "laminagent._lag._log_gemini_usage_to_run_features", lambda *_: None
+    )
+    monkeypatch.setattr(
+        "laminagent._lag._log_gemini_usage_record", lambda *_, **__: None
+    )
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--tool", "--prompt", "build tool"])
+
+    assert result.exit_code == 0
+    assert captured["verbose_llm"] is True
+
+
+def test_lag_tool_mode_allows_less_verbose_flag(monkeypatch) -> None:
+    captured: dict[str, bool] = {}
+
+    def _fake_run_agent_mode(**kwargs):
+        captured["verbose_llm"] = bool(kwargs["verbose_llm"])
+        return {
+            "run_uid": "run-1",
+            "generated_path": None,
+            "generated_paths": "",
+            "final_text": "ok",
+            "llm_usage": {
+                "n_call_count": 1,
+                "n_prompt_tokens": 1,
+                "n_output_tokens": 1,
+                "n_total_tokens": 2,
+            },
+            "duration_in_sec": 0.1,
+            "trace_events": [],
+        }
+
+    monkeypatch.setattr("laminagent._lag.run_agent_mode", _fake_run_agent_mode)
+    monkeypatch.setattr(
+        "laminagent._lag._log_gemini_usage_to_run_features", lambda *_: None
+    )
+    monkeypatch.setattr(
+        "laminagent._lag._log_gemini_usage_record", lambda *_, **__: None
+    )
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--tool", "--less-verbose", "--prompt", "build tool"])
+
+    assert result.exit_code == 0
+    assert captured["verbose_llm"] is False
+
+
+def test_trace_is_logged_with_redaction(monkeypatch) -> None:
+    logged: list[str] = []
+
+    monkeypatch.setattr(
+        "laminagent._lag.logger.info", lambda message: logged.append(message)
+    )
+
+    def _fake_execute(prompt: str) -> dict[str, object]:
+        assert prompt == "run test-lag/create_fasta.py"
+        return {
+            "run_uid": "run-1",
+            "resolved_paths": "",
+            "final_text": "done",
+            "trace_events": [
+                {
+                    "step": 1,
+                    "event": "tool_call",
+                    "tool": "x",
+                    "tool_args": {"api_key": "super-secret"},
+                }
+            ],
+        }
+
+    monkeypatch.setattr("laminagent._lag.execute_existing_from_prompt", _fake_execute)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--prompt", "run test-lag/create_fasta.py"])
+
+    assert result.exit_code == 0
+    assert logged
+    assert "***REDACTED***" in logged[-1]
+    assert "super-secret" not in logged[-1]
+
+
+def test_redact_payload_masks_known_secret_keys() -> None:
+    payload = {"api_key": "abc", "nested": {"authorization": "Bearer token", "ok": 1}}
+    redacted = _redact_payload(payload)
+    assert isinstance(redacted, dict)
+    assert redacted["api_key"] == "***REDACTED***"
+    assert isinstance(redacted["nested"], dict)
+    assert redacted["nested"]["authorization"] == "***REDACTED***"
 
 
 def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
