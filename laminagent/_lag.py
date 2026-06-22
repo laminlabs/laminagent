@@ -7,7 +7,7 @@ import subprocess
 import time
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 import lamindb as ln
@@ -31,6 +31,9 @@ from ._do_executor import execute_runnable_paths, execute_tool, find_tool_file
 from ._output_saver import save_generated_tool_files
 from ._run_context import RunContext, create_run_uid
 from ._setup import get_task, normalize_task_name, setup
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _STEP_PATTERN = re.compile(r"^step (\d+):\s*(.*)$")
 _GEMINI_ATTEMPT_PATTERN = re.compile(r"^gemini request attempt (\d+)/(\d+)$")
@@ -204,6 +207,7 @@ def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> N
 
 
 def _progress(message: str) -> None:
+    logger.info(message)
     if message.startswith("mode="):
         pretty_message = message.replace("mode=do", "mode=default")
         _echo_info(pretty_message)
@@ -251,6 +255,69 @@ def _progress(message: str) -> None:
         _secho(status, fg=color)
     else:
         _secho(detail, dim=True)
+
+
+def _progress_verbose_live() -> Callable[[str], None]:
+    current_step: int | None = None
+
+    def _callback(message: str) -> None:
+        nonlocal current_step
+        logger.info(message)
+        if message.startswith("mode="):
+            pretty_message = message.replace("mode=do", "mode=default")
+            _echo_info(pretty_message)
+            return
+        if message.startswith("prompt: "):
+            _secho("→ prompt: ", nl=False, fg="black")
+            _secho(message.removeprefix("prompt: "), fg="cyan")
+            return
+        if message.startswith("gemini request attempt"):
+            attempt_match = _GEMINI_ATTEMPT_PATTERN.match(message)
+            if attempt_match is not None and int(attempt_match.group(1)) > 1:
+                _secho(f"→ {message}", fg="magenta")
+            return
+        if message.startswith("gemini transient status"):
+            _secho(f"→ {message}", fg="yellow")
+            return
+        if message.startswith("gemini request failed"):
+            _secho(f"→ {message}", fg="red")
+            return
+        if message == "model finished without further tool calls":
+            _secho(f"→ {message}", fg="green")
+            return
+
+        step_match = _STEP_PATTERN.match(message)
+        if step_match is None:
+            _echo_info(message)
+            return
+
+        step, detail = step_match.groups()
+        step_num = int(step)
+        if detail.startswith("waiting for model response"):
+            if current_step != step_num:
+                _echo_section(f"Step {step_num}")
+                current_step = step_num
+            return
+        if current_step != step_num:
+            _echo_section(f"Step {step_num}")
+            current_step = step_num
+        if detail.startswith("model text: "):
+            _secho("→ model text: ", nl=False, fg="blue")
+            _secho(detail.removeprefix("model text: "), dim=True)
+        elif detail.startswith("tool call -> "):
+            _secho("→ tool call -> ", nl=False, fg="magenta")
+            _secho(detail.removeprefix("tool call -> "), dim=True)
+        elif detail.startswith("wrote file "):
+            _secho(f"→ {detail}", fg="green")
+        elif detail.startswith("tool result status="):
+            status = detail.removeprefix("tool result status=")
+            color = "green" if status == "success" else "yellow"
+            _secho("→ tool result status=", nl=False, fg="black")
+            _secho(status, fg=color)
+        else:
+            _secho(f"→ {detail}", dim=True)
+
+    return _callback
 
 
 def _parse_generated_paths(generated_paths_csv: str) -> list[Path]:
@@ -510,11 +577,14 @@ def run_agent_mode(
         track_outputs=track_outputs,
     )
     start = time.perf_counter()
+    progress_callback: Callable[[str], None] | None = (
+        _progress_verbose_live() if verbose_llm else _progress
+    )
     result = run_agent(
         api_key=api_key,
         run_context=run_context,
         output_file=output_path,
-        progress_callback=None if verbose_llm else _progress,
+        progress_callback=progress_callback,
     )
     elapsed = time.perf_counter() - start
 
@@ -683,11 +753,6 @@ def lag(
         )
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
-        if verbose_llm:
-            _print_verbose_trace(
-                list(outcome.get("trace_events", [])),
-                title="Trace",
-            )
         _print_gemini_usage_summary(
             gemini_usage, trace_events=list(outcome.get("trace_events", []))
         )
