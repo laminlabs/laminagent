@@ -334,7 +334,6 @@ def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> N
 
 
 def _progress(message: str) -> None:
-    logger.info(_format_progress_message_for_log(message))
     if message.startswith("prompt: "):
         _secho("→ prompt: ", nl=False, fg="black")
         _secho(message.removeprefix("prompt: "), fg="cyan")
@@ -391,7 +390,6 @@ def _progress_verbose_live() -> Callable[[str], None]:
 
     def _callback(message: str) -> None:
         nonlocal current_step
-        logger.info(_format_progress_message_for_log(message))
         if message.startswith("prompt: "):
             _secho("→ prompt: ", nl=False, fg="black")
             _secho(message.removeprefix("prompt: "), fg="cyan")
@@ -796,7 +794,6 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, Any]:
 
 
 @click.group(invoke_without_command=True)
-@click.pass_context
 @click.option("--prompt", required=False, type=str, help="User prompt.")
 @click.option(
     "--verbose-llm/--less-verbose",
@@ -826,7 +823,6 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, Any]:
 )
 @ln.flow("wDJpT3xdqjY8")
 def lag(
-    ctx: click.Context,
     prompt: str | None,
     verbose_llm: bool,
     output_file: Path | None,
@@ -835,6 +831,7 @@ def lag(
     project: str | None,
 ) -> None:
     """LAG CLI."""
+    ctx = click.get_current_context()
     if ctx.invoked_subcommand is not None:
         return
 

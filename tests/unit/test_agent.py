@@ -24,6 +24,7 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
         args={"code": "print('x')"},
         run_context=run_context,
         default_output_file=Path("tool_run.md"),
+        existing_generated_files=[],
     )
     assert captured["filename"].endswith(".py")
     assert captured["filename"] == "tool_run.py"
@@ -31,8 +32,6 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
 
 def test_function_declarations_include_authoring_tools() -> None:
     names = {entry["name"] for entry in _function_declarations()}
-    assert "get_local_skill" in names
-    assert "get_lamindb_skill" in names
     assert "write_from_template" in names
     assert "write_python_script" in names
 
@@ -48,9 +47,27 @@ def test_enforces_explicit_key_filename_reuse() -> None:
         args={"filename": "create_fasta_albumin.py", "code": "print('x')"},
         run_context=run_context,
         default_output_file=Path("analysis.py"),
+        existing_generated_files=[],
     )
     assert result["status"] == "error"
     assert "Update that exact file" in str(result["message"])
+
+
+def test_rejects_second_runnable_filename_in_same_run() -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="write a script",
+        model="m",
+    )
+    result = _dispatch_tool(
+        name="write_python_script",
+        args={"filename": "second.py", "code": "print('x')"},
+        run_context=run_context,
+        default_output_file=Path("analysis.py"),
+        existing_generated_files=["first.py"],
+    )
+    assert result["status"] == "error"
+    assert "already created" in str(result["message"])
 
 
 def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:

@@ -4,7 +4,6 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-import click
 import pytest
 from click.testing import CliRunner
 from laminagent._lag import (
@@ -42,8 +41,7 @@ def _bypass_lag_flow_wrapper(monkeypatch) -> None:
         unwrapped_callback = unwrapped_callback.__wrapped__
 
     def _callback_without_flow(*args, **kwargs):
-        ctx = click.get_current_context()
-        return unwrapped_callback(ctx, *args, **kwargs)
+        return unwrapped_callback(*args, **kwargs)
 
     monkeypatch.setattr(lag, "callback", _callback_without_flow)
 

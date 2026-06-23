@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from ._context import get_lamindb_skill, get_local_skill
 from ._writer import (
     write_from_template,
     write_python_script,
@@ -21,43 +20,17 @@ if TYPE_CHECKING:
     from ._run_context import RunContext
 
 SYSTEM_INSTRUCTION = (
-    "You are a scientific coding agent. Given a prompt, first consider retrieving relevant context if useful, "
-    "then write runnable Python code in a script leveraging LaminDB for tracking and queries."
+    "You are a scientific coding agent. Write runnable Python code in one script whenever possible. "
+    "For simple requests, call write_python_script exactly once and then finish. "
     "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
-    "write the task directly in the produced runnable scripts."
+    "write the task directly in the produced runnable script. "
     "If the prompt references an existing script, update that script instead of creating a new one. "
-    "You may read skills/query LaminDB for context, but do not write markdown tools."
+    "Do not write defensive code but write concise cosde that assumes the latest version of lamindb."
 )
 
 
 def _function_declarations() -> list[dict[str, Any]]:
     declarations: list[dict[str, Any]] = [
-        {
-            "name": "get_local_skill",
-            "description": "Find relevant local SKILL.md docs for a topic.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "topic": {"type": "STRING"},
-                    "skills_root": {"type": "STRING"},
-                },
-                "required": ["topic"],
-            },
-        },
-        {
-            "name": "get_lamindb_skill",
-            "description": "Query laminlabs/biomed-skills for relevant transforms/artifacts.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "key": {"type": "STRING"},
-                    "limit": {"type": "NUMBER"},
-                },
-                "required": ["key"],
-            },
-        },
-    ]
-    declarations.append(
         {
             "name": "write_from_template",
             "description": "Create a file from an existing template path.",
@@ -70,7 +43,7 @@ def _function_declarations() -> list[dict[str, Any]]:
                 "required": ["template_path", "filename"],
             },
         }
-    )
+    ]
     declarations.append(
         {
             "name": "write_python_script",
@@ -187,21 +160,8 @@ def _dispatch_tool(
     args: dict[str, Any],
     run_context: RunContext,
     default_output_file: Path,
+    existing_generated_files: list[str],
 ) -> dict[str, Any]:
-    if name == "get_local_skill":
-        return get_local_skill(
-            topic=str(args.get("topic", "")),
-            skills_root=args.get("skills_root"),
-            run_uid=run_context.run_uid,
-        )
-    if name == "get_lamindb_skill":
-        key = str(args.get("key", ""))
-        result = get_lamindb_skill(
-            key=key,
-            limit=int(args.get("limit", 5)),
-            run_uid=run_context.run_uid,
-        )
-        return result
     if name == "write_python_script":
         filename = str(
             args.get("filename") or ""
@@ -215,6 +175,16 @@ def _dispatch_tool(
                     "Prompt references explicit tool key "
                     f"'{explicit_keys[0]}'. Update that exact file instead of "
                     f"creating '{filename}'."
+                ),
+                "run_uid": run_context.run_uid,
+            }
+        if existing_generated_files and filename not in existing_generated_files:
+            existing_name = existing_generated_files[0]
+            return {
+                "status": "error",
+                "message": (
+                    "A runnable script was already created in this run. "
+                    f"Update '{existing_name}' instead of creating '{filename}'."
                 ),
                 "run_uid": run_context.run_uid,
             }
@@ -352,6 +322,7 @@ def run_agent(
                 args=args,
                 run_context=run_context,
                 default_output_file=output_file,
+                existing_generated_files=generated_files,
             )
             generated = result.get("file")
             if isinstance(generated, str) and generated:
