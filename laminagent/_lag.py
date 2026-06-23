@@ -492,10 +492,6 @@ def _warn_if_missing_project(project: str | None) -> None:
         logger.warning("no --project was provided and LAMIN_CURRENT_PROJECT is not set")
 
 
-def _ensure_info_verbosity() -> None:
-    ln.settings.verbosity = "info"
-
-
 def _print_generated_tool_contents(paths: list[Path]) -> None:
     seen: set[Path] = set()
     for path in paths:
@@ -781,7 +777,6 @@ def lag(
         raise click.UsageError(
             "`--prompt` is required for lag; use `lag setup` to initialize setup records."
         )
-    _ensure_info_verbosity()
     prompt_text = prompt
 
     _warn_if_missing_project(project)
