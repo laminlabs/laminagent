@@ -7,7 +7,7 @@ from pathlib import Path
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
-    "Create a script that curates the lamindb dataset `ln.examples.datasets.mini_immuno.get_dataset1()` using "
+    "Create a script that curates artifact AsTXi6hzDFM7L17t0004 from the laminlabs/lamindata LaminDB instance using "
     "`ln.examples.datasets.mini_immuno.define_mini_immuno_schema_flexible()`."
     "Follow best practices: https://docs.lamin.ai/curate.md"
 )
