@@ -1,4 +1,5 @@
 import ast
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,10 +12,13 @@ PROMPT = (
     "Follow best practices: https://docs.lamin.ai/curate.md"
 )
 
-RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
+RUN_DIR = Path(f"{TESTDB1_DEV_DIR}/test_02")
 
 
 def test_curate_mini_immuno() -> None:
+    if RUN_DIR.exists():
+        shutil.rmtree(RUN_DIR)
+    RUN_DIR.mkdir(parents=True)
     # step 1: write the curation script
     result = run_laminagent(RUN_DIR, "--prompt", PROMPT)
     print(f"\n--- agent stdout ---\n{result.stdout}")
