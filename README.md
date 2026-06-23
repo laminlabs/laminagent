@@ -2,7 +2,7 @@
 
 # Lag CLI: Lamin Agent CLI
 
-`lag` can execute existing runnable tools and author/update runnable scripts (`.py`).
+`lag` uses a single auto flow to execute existing runnable tools or author/update runnable scripts (`.py`).
 
 ## Setup
 
@@ -20,7 +20,7 @@ Make sure LaminDB is initialized and connected.
 
 ## Quick Start
 
-Run in default mode:
+Run with auto flow:
 
 ```bash
 lag --prompt "Write a text file with 'Hello agent!' in it, please"
@@ -34,15 +34,15 @@ Before running `lag`, you can initialize LagEval registry types manually:
 lag setup
 ```
 
-If these records are missing, `lag --tool` still runs; run `lag setup` when you also want LagEval usage records.
+If these records are missing, `lag` still runs; run `lag setup` when you also want LagEval usage records.
 
-## Modes
+## Single Auto Flow
 
-### Default mode (execute only)
+`lag` decides behavior from prompt and local context:
 
-- If a tool exists (`tool.md` or latest `tool_*.md`, or `--tool-file`), `lag` executes the referenced runnable tools.
-- Otherwise, `lag` executes existing runnable tools referenced in `--prompt` (explicit `.py` key or path).
-- Default mode does not create or update tools. If a referenced tool is missing, it fails with a clear error.
+- If `--prompt` includes explicit runnable `.py` keys/paths, `lag` executes those scripts.
+- Otherwise, if `tool.md` (or latest `tool_*.md`) exists, `lag` executes scripts referenced there.
+- Otherwise, `lag` invokes LLM authoring to create/update a runnable `.py` script and saves it with `lamin save`.
 
 ### Setup mode (`setup`)
 
@@ -64,23 +64,12 @@ You can also set up a single task script:
 lag setup tests/tasks/test_01_create_fasta_for_favorite_protein.py
 ```
 
-### Planning mode (`--tool`)
-
-Generate or update runnable tools (without executing them):
-
-```bash
-lag --tool --prompt "Update test-lag/create_fasta.py with another protein"
-```
-
-Generated/updated tool files are saved via `lamin save` in tool mode.
-
 ## Common Flags
 
 - `--project <name>` sets `LAMIN_CURRENT_PROJECT`.
-- `--model <model-name>` selects the Gemini model (`--tool` mode).
-- `--output-file <path>` sets output filename for generated content (`--tool` mode).
-- `--tool-file <path>` executes a specific tool in default mode.
-- `--no-track` disables `ln.track()` / `ln.finish()` injection in generated scripts (`--tool` mode).
+- `--model <model-name>` selects the Gemini model during authoring.
+- `--output-file <path>` sets output filename for generated content during authoring.
+- `--no-track` disables `ln.track()` / `ln.finish()` injection in generated scripts.
 
 ## Run Context Propagation
 
@@ -93,7 +82,7 @@ When `lag` executes scripts, it propagates:
 
 ## Eval Telemetry Persistence
 
-In `--tool` mode, laminagent stores telemetry as records and also annotates run features. Logged record features include:
+When authoring runs, laminagent stores telemetry as records and also annotates run features. Logged record features include:
 
 - `package_version`
 - `duration_in_sec`

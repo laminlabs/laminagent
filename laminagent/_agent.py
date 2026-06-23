@@ -4,7 +4,6 @@ import copy
 import json
 import re
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -17,26 +16,19 @@ from ._writer import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ._run_context import RunContext
 
 PLAN_SYSTEM_INSTRUCTION = (
-    "You are a tool authoring agent. In --tool mode, create or update runnable "
+    "You are a tool authoring agent. Create or update runnable "
     "tool files (.py only) that satisfy the prompt. If the prompt references an "
     "explicit tool key/path, update that exact file instead of creating a new name. "
     "You may read skills/query LaminDB for context, but do not write markdown tools."
 )
 
-DO_SYSTEM_INSTRUCTION = (
-    "You are a scientific coding agent. First retrieve relevant context when useful, "
-    "then write runnable analysis code. For every output file your script writes, "
-    "explicitly call ln.Artifact('<output_path>').save() in the generated code. "
-    "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
-    "write the task directly in the produced runnable tool file(s)."
-)
 
-
-def _function_declarations(mode: str) -> list[dict[str, Any]]:
+def _function_declarations() -> list[dict[str, Any]]:
     declarations: list[dict[str, Any]] = [
         {
             "name": "get_local_skill",
@@ -63,41 +55,39 @@ def _function_declarations(mode: str) -> list[dict[str, Any]]:
             },
         },
     ]
-    if mode == "tool":
-        declarations.append(
-            {
-                "name": "write_from_template",
-                "description": "Create a file from an existing template path.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "template_path": {"type": "STRING"},
-                        "filename": {"type": "STRING"},
-                    },
-                    "required": ["template_path", "filename"],
+    declarations.append(
+        {
+            "name": "write_from_template",
+            "description": "Create a file from an existing template path.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "template_path": {"type": "STRING"},
+                    "filename": {"type": "STRING"},
                 },
-            }
-        )
-    if mode in {"tool", "exec"}:
-        declarations.append(
-            {
-                "name": "write_python_script",
-                "description": "Write a runnable Python script file.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "filename": {"type": "STRING"},
-                        "code": {"type": "STRING"},
-                    },
-                    "required": ["filename", "code"],
+                "required": ["template_path", "filename"],
+            },
+        }
+    )
+    declarations.append(
+        {
+            "name": "write_python_script",
+            "description": "Write a runnable Python script file.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "filename": {"type": "STRING"},
+                    "code": {"type": "STRING"},
                 },
-            }
-        )
+                "required": ["filename", "code"],
+            },
+        }
+    )
     return declarations
 
 
-def _tool_payload(mode: str) -> list[dict[str, Any]]:
-    return [{"functionDeclarations": _function_declarations(mode)}]
+def _tool_payload() -> list[dict[str, Any]]:
+    return [{"functionDeclarations": _function_declarations()}]
 
 
 def _extract_text(parts: list[dict[str, Any]]) -> str:
@@ -107,39 +97,6 @@ def _extract_text(parts: list[dict[str, Any]]) -> str:
         if isinstance(text, str):
             chunks.append(text)
     return "\n".join(chunks).strip()
-
-
-def _looks_like_wrapper_runner(code: str, existing_generated_files: list[str]) -> bool:
-    text = code.lower()
-    if "subprocess.run" not in text:
-        return False
-    if "python" not in text and "sys.executable" not in text:
-        return False
-    if "artifact(" in text:
-        return False
-
-    py_target_match = re.search(r"""["'][^"']+\.py["']""", code)
-    if not py_target_match:
-        return False
-
-    existing_names = {
-        Path(path_str).name
-        for path_str in existing_generated_files
-        if path_str.endswith(".py")
-    }
-    if not existing_names:
-        return True
-    return any(name in code for name in existing_names)
-
-
-def _is_runnable_tool_path(path_str: str) -> bool:
-    suffix = Path(path_str).suffix.lower()
-    return suffix == ".py"
-
-
-def _is_explicit_tool_key(key: str) -> bool:
-    stripped = key.strip().lower()
-    return stripped.endswith(".py")
 
 
 def _extract_explicit_tool_keys(text: str) -> list[str]:
@@ -228,7 +185,6 @@ def _dispatch_tool(
     args: dict[str, Any],
     run_context: RunContext,
     default_output_file: Path,
-    existing_generated_files: list[str],
 ) -> dict[str, Any]:
     if name == "get_local_skill":
         return get_local_skill(
@@ -243,90 +199,20 @@ def _dispatch_tool(
             limit=int(args.get("limit", 5)),
             run_uid=run_context.run_uid,
         )
-        if (
-            run_context.mode == "exec"
-            and _is_explicit_tool_key(key)
-            and not result.get("results")
-        ):
-            searched = result.get("searched_instances", [])
-            searched_str = ", ".join(searched) if isinstance(searched, list) else "none"
-            return {
-                "status": "error",
-                "fatal": True,
-                "run_uid": run_context.run_uid,
-                "message": (
-                    f"Tool key '{key}' was not found in searched instances ({searched_str}). "
-                    "Aborting without generating a new tool."
-                ),
-            }
-        if (
-            run_context.mode == "exec"
-            and _is_explicit_tool_key(key)
-            and result.get("results")
-        ):
-            matched_key = key
-            first_result = (
-                result.get("results", [])[0]
-                if isinstance(result.get("results"), list) and result.get("results")
-                else None
-            )
-            if isinstance(first_result, dict):
-                candidate_key = first_result.get("key")
-                if isinstance(candidate_key, str) and candidate_key.strip():
-                    matched_key = candidate_key.strip()
-            return {
-                "status": "success",
-                "run_uid": run_context.run_uid,
-                "message": (
-                    f"Found existing runnable tool '{matched_key}'. "
-                    "Skipping generation and proceeding to execution."
-                ),
-                "resolved_runnable_path": matched_key,
-                "short_circuit_execute": True,
-            }
         return result
     if name == "write_python_script":
         filename = str(
             args.get("filename") or ""
         ).strip() or _default_filename_for_tool(name, default_output_file)
         code = str(args.get("code", ""))
-        if run_context.mode == "tool":
-            explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
-            if len(explicit_keys) == 1 and filename != explicit_keys[0]:
-                return {
-                    "status": "error",
-                    "message": (
-                        "Prompt references explicit tool key "
-                        f"'{explicit_keys[0]}'. Update that exact file instead of "
-                        f"creating '{filename}'."
-                    ),
-                    "run_uid": run_context.run_uid,
-                }
-        if run_context.mode == "exec":
-            existing_runnables = [
-                path_str
-                for path_str in existing_generated_files
-                if _is_runnable_tool_path(path_str)
-            ]
-            if existing_runnables and filename not in existing_runnables:
-                existing_name = Path(existing_runnables[0]).name
-                return {
-                    "status": "error",
-                    "message": (
-                        "Rejected additional runnable tool file in do mode. "
-                        f"Reuse the existing file '{existing_name}' instead of creating "
-                        f"'{Path(filename).name}'."
-                    ),
-                    "run_uid": run_context.run_uid,
-                }
-        if run_context.mode == "exec" and _looks_like_wrapper_runner(
-            code, existing_generated_files
-        ):
+        explicit_keys = _extract_explicit_tool_keys(run_context.prompt)
+        if len(explicit_keys) == 1 and filename != explicit_keys[0]:
             return {
                 "status": "error",
                 "message": (
-                    "Rejected wrapper runner script. In do mode, write the task directly "
-                    "instead of invoking another generated script via subprocess."
+                    "Prompt references explicit tool key "
+                    f"'{explicit_keys[0]}'. Update that exact file instead of "
+                    f"creating '{filename}'."
                 ),
                 "run_uid": run_context.run_uid,
             }
@@ -358,9 +244,7 @@ def run_agent(
     max_steps: int = 20,
     progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    system_instruction = (
-        PLAN_SYSTEM_INSTRUCTION if run_context.mode == "tool" else DO_SYSTEM_INSTRUCTION
-    )
+    system_instruction = PLAN_SYSTEM_INSTRUCTION
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{run_context.model}:generateContent"
@@ -381,7 +265,7 @@ def run_agent(
     resolved_runnable_path: str | None = None
     short_circuit_execute = False
     if progress_callback is not None:
-        progress_callback(f"mode={run_context.mode} model={run_context.model}")
+        progress_callback(f"model={run_context.model}")
         progress_callback(f"prompt: {run_context.prompt}")
 
     for step in range(1, max_steps + 1):
@@ -389,7 +273,7 @@ def run_agent(
             progress_callback(f"step {step}: waiting for model response")
         payload = {
             "contents": contents,
-            "tools": _tool_payload(run_context.mode),
+            "tools": _tool_payload(),
             "generationConfig": {"temperature": 0.2},
         }
         trace_events.append(
@@ -467,7 +351,6 @@ def run_agent(
                 args=args,
                 run_context=run_context,
                 default_output_file=output_file,
-                existing_generated_files=generated_files,
             )
             generated = result.get("file")
             if isinstance(generated, str) and generated:
