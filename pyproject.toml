@@ -10,6 +10,7 @@ readme = "README.md"
 dynamic = ["version", "description"]
 dependencies = [
     "click",
+    "rich",
     "lamindb-core",
     # below is only needed for
     # data science workflows, not for laminagent

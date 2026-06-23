@@ -1,5 +1,4 @@
 import ast
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -27,15 +26,10 @@ def is_valid_fasta(text: str) -> bool:
 
 def test_create_favorite_protein_sequence() -> None:
     # step 1: write the script
-    result = run_laminagent(TESTDB1_DEV_DIR, "--tool", "--prompt", PROMPT)
+    result = run_laminagent(TESTDB1_DEV_DIR, "--prompt", PROMPT)
     assert result.returncode == 0
-    clean_stdout = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
-    run_uid_match = re.search(r"run_uid=([A-Za-z0-9]+)", clean_stdout)
-    assert run_uid_match is not None, "CLI output did not include run_uid"
-    run_uid = run_uid_match.group(1)
-
-    run = ln.Run.filter(uid=run_uid).one_or_none()
-    assert run is not None, f"Run with uid={run_uid} was not found"
+    run = ln.Run.filter().order_by("-created_at").first()
+    assert run is not None, "No run found after laminagent invocation"
     example_record = ln.Record.filter(uid=EXAMPLE_UID).one_or_none()
     if example_record is None:
         example_record = ln.Record(name="example_fasta_run")

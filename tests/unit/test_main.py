@@ -4,14 +4,15 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-import click
 import pytest
 from click.testing import CliRunner
 from laminagent._lag import (
     _extract_runnable_keys_from_prompt,
+    _format_progress_message_for_log,
     _log_gemini_usage_record,
     _parse_generated_paths,
     _print_generated_tool_contents,
+    _redact_payload,
     _resolve_prompt_runnable_paths,
     _set_current_project_env,
     _warn_if_missing_project,
@@ -40,8 +41,7 @@ def _bypass_lag_flow_wrapper(monkeypatch) -> None:
         unwrapped_callback = unwrapped_callback.__wrapped__
 
     def _callback_without_flow(*args, **kwargs):
-        ctx = click.get_current_context()
-        return unwrapped_callback(ctx, *args, **kwargs)
+        return unwrapped_callback(*args, **kwargs)
 
     monkeypatch.setattr(lag, "callback", _callback_without_flow)
 
@@ -93,11 +93,8 @@ def test_extract_runnable_keys_from_prompt_deduplicates() -> None:
     assert keys == ["test-lag/create_fasta.py", "x.py"]
 
 
-def test_resolve_prompt_runnable_paths_requires_explicit_key() -> None:
-    with pytest.raises(
-        click.ClickException, match="Default mode executes existing tools only"
-    ):
-        _resolve_prompt_runnable_paths("please rerun the tool")
+def test_resolve_prompt_runnable_paths_returns_empty_without_keys() -> None:
+    assert _resolve_prompt_runnable_paths("please rerun the tool") == []
 
 
 def test_lag_setup_routes_to_setup_handler(monkeypatch) -> None:
@@ -131,7 +128,7 @@ def test_lag_setup_accepts_script_argument(tmp_path: Path, monkeypatch) -> None:
     assert called["script"] == script
 
 
-def test_lag_default_mode_still_requires_prompt() -> None:
+def test_lag_still_requires_prompt() -> None:
     runner = CliRunner()
     result = runner.invoke(lag, [])
     assert result.exit_code != 0
@@ -155,7 +152,134 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
 
     assert result.exit_code == 0
     clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
-    assert "run_uid=run-1" in clean_output
+    assert "[Notes]" in clean_output
+    assert "done" in clean_output
+
+
+def test_lag_auto_authoring_runs_without_verbose_option(monkeypatch) -> None:
+    def _fake_run_agent_authoring(**kwargs):
+        return {
+            "run_uid": "run-1",
+            "generated_path": None,
+            "generated_paths": "",
+            "final_text": "ok",
+            "llm_usage": {
+                "n_call_count": 1,
+                "n_prompt_tokens": 1,
+                "n_output_tokens": 1,
+                "n_total_tokens": 2,
+            },
+            "duration_in_sec": 0.1,
+            "trace_events": [],
+        }
+
+    monkeypatch.setattr("laminagent._lag.find_tool_file", lambda: None)
+    monkeypatch.setattr(
+        "laminagent._lag.run_agent_authoring", _fake_run_agent_authoring
+    )
+    monkeypatch.setattr(
+        "laminagent._lag._log_gemini_usage_to_run_features", lambda *_: None
+    )
+    monkeypatch.setattr(
+        "laminagent._lag._log_gemini_usage_record", lambda *_, **__: None
+    )
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--prompt", "build tool"])
+
+    assert result.exit_code == 0
+
+
+def test_lag_rejects_less_verbose_flag() -> None:
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--less-verbose", "--prompt", "build tool"])
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+
+
+def test_lag_auto_executes_discovered_tool_file(monkeypatch, tmp_path: Path) -> None:
+    tool_file = tmp_path / "tool.md"
+    tool_file.write_text("- run `a.py`\n", encoding="utf-8")
+    called: dict[str, str] = {}
+
+    monkeypatch.setattr("laminagent._lag.find_tool_file", lambda: tool_file)
+
+    def _fake_execute_the_tool(prompt: str, tool_file: Path) -> dict[str, str | list]:
+        called["prompt"] = prompt
+        called["tool"] = str(tool_file)
+        return {
+            "run_uid": "run-1",
+            "tool_path": str(tool_file),
+            "final_text": "done",
+            "trace_events": [],
+        }
+
+    monkeypatch.setattr("laminagent._lag.execute_the_tool", _fake_execute_the_tool)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--prompt", "please run latest tool"])
+
+    assert result.exit_code == 0
+    assert called["prompt"] == "please run latest tool"
+    assert called["tool"] == str(tool_file)
+
+
+def test_trace_is_logged_with_redaction(monkeypatch) -> None:
+    logged: list[str] = []
+
+    monkeypatch.setattr(
+        "laminagent._lag.logger.info", lambda message: logged.append(message)
+    )
+
+    def _fake_execute(prompt: str) -> dict[str, object]:
+        assert prompt == "run test-lag/create_fasta.py"
+        return {
+            "run_uid": "run-1",
+            "resolved_paths": "",
+            "final_text": "done",
+            "trace_events": [
+                {
+                    "step": 1,
+                    "event": "tool_call",
+                    "tool": "x",
+                    "tool_args": {"api_key": "super-secret"},
+                }
+            ],
+        }
+
+    monkeypatch.setattr("laminagent._lag.execute_existing_from_prompt", _fake_execute)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--prompt", "run test-lag/create_fasta.py"])
+
+    assert result.exit_code == 0
+    assert logged
+    assert "lag_trace_summary=" in logged[-1]
+    assert "super-secret" not in "".join(logged)
+
+
+def test_redact_payload_masks_known_secret_keys() -> None:
+    payload = {"api_key": "abc", "nested": {"authorization": "Bearer token", "ok": 1}}
+    redacted = _redact_payload(payload)
+    assert isinstance(redacted, dict)
+    assert redacted["api_key"] == "***REDACTED***"
+    assert isinstance(redacted["nested"], dict)
+    assert redacted["nested"]["authorization"] == "***REDACTED***"
+
+
+def test_format_progress_message_for_log_summarizes_tool_payload() -> None:
+    message = (
+        'step 1: tool result payload={"message":"Found 5 LaminDB matches for '
+        '\\"artifact\\".","results":[{"type":"artifact","key":"a"},{"type":"artifact","key":"b"}]}'
+    )
+    formatted = _format_progress_message_for_log(message)
+    assert "step 1: tool result payload:" in formatted
+    assert 'Found 5 LaminDB matches for "artifact".' in formatted
+    assert "results: 2" in formatted
+
+
+def test_format_progress_message_for_log_summarizes_tool_call_args() -> None:
+    message = 'step 2: tool call -> get_lamindb_skill args={"key":"artifact"}'
+    formatted = _format_progress_message_for_log(message)
+    assert formatted == "step 2: tool call -> get_lamindb_skill (key='artifact')"
 
 
 def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
@@ -196,21 +320,20 @@ def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
     assert FakeRecord.payload["features"]["n_total_tokens"] == 5
 
 
-def test_log_gemini_usage_record_requires_configured_task(monkeypatch) -> None:
+def test_log_gemini_usage_record_skips_when_task_not_configured(monkeypatch) -> None:
     monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: None)
 
-    with pytest.raises(click.ClickException, match="Please run `lag setup` first"):
-        _log_gemini_usage_record(
-            {
-                "n_call_count": 1,
-                "n_prompt_tokens": 2,
-                "n_output_tokens": 3,
-                "n_total_tokens": 5,
-            },
-            package_version="0.1.0",
-            duration_in_sec=0.2,
-            task_name="tool",
-        )
+    _log_gemini_usage_record(
+        {
+            "n_call_count": 1,
+            "n_prompt_tokens": 2,
+            "n_output_tokens": 3,
+            "n_total_tokens": 5,
+        },
+        package_version="0.1.0",
+        duration_in_sec=0.2,
+        task_name="tool",
+    )
 
 
 def test_record_usage_task_name_prefers_pytest_task_context(monkeypatch) -> None:

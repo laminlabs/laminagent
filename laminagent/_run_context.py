@@ -46,7 +46,6 @@ class LLMUsageTotals:
 @dataclass(slots=True)
 class RunContext:
     run_uid: str
-    mode: str
     prompt: str
     model: str
     track_outputs: bool = True
