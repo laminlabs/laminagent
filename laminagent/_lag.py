@@ -17,13 +17,13 @@ from lamin_utils import logger
 try:
     from rich.console import Console
     from rich.panel import Panel
-    from rich.syntax import Syntax
+    from rich.text import Text
 
     _RICH_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional fallback
     Console = None  # type: ignore[assignment]
     Panel = None  # type: ignore[assignment]
-    Syntax = None  # type: ignore[assignment]
+    Text = None  # type: ignore[assignment]
     _RICH_AVAILABLE = False
 
 from ._agent import run_agent
@@ -132,16 +132,17 @@ def _console() -> Console | None:
 
 def _print_rich_json(title: str, payload: object) -> None:
     console = _console()
-    rendered = _truncate(_json_dumps(_redact_payload(payload)))
+    rendered = _json_dumps(_redact_payload(payload))
     if console is None:
         _echo_section(title)
         _secho(rendered, dim=True)
         return
     assert Panel is not None
-    assert Syntax is not None
+    assert Text is not None
+    wrapped = Text(rendered, no_wrap=False, overflow="fold")
     console.print(
         Panel(
-            Syntax(rendered, "json", word_wrap=True),
+            wrapped,
             title=title,
             border_style="cyan",
         )
@@ -333,58 +334,6 @@ def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> N
                 )
 
 
-def _progress(message: str) -> None:
-    if message.startswith("prompt: "):
-        _secho("→ prompt: ", nl=False, fg="black")
-        _secho(message.removeprefix("prompt: "), fg="cyan")
-        return
-    if message.startswith("gemini request attempt"):
-        attempt_match = _GEMINI_ATTEMPT_PATTERN.match(message)
-        if attempt_match is not None and int(attempt_match.group(1)) > 1:
-            _secho(f"→ {message}", fg="magenta")
-        return
-    if message.startswith("gemini transient status"):
-        _secho(f"→ {message}", fg="yellow")
-        return
-    if message.startswith("gemini request failed"):
-        _secho(f"→ {message}", fg="red")
-        return
-    if message == "model finished without further tool calls":
-        _secho(f"→ {message}", fg="green")
-        return
-
-    step_match = _STEP_PATTERN.match(message)
-    if step_match is None:
-        _echo_info(message)
-        return
-
-    step, detail = step_match.groups()
-    if detail.startswith("waiting for model response"):
-        return
-    _secho(f"→ step {step}: ", nl=False, fg="black")
-    if detail.startswith("model text: "):
-        _secho("model text: ", nl=False, fg="blue")
-        _secho(detail.removeprefix("model text: "), dim=True)
-    elif detail.startswith("tool call -> "):
-        formatted = _format_tool_call_detail(detail)
-        if formatted is None:
-            _secho("tool call -> ", nl=False, fg="magenta")
-            _secho(detail.removeprefix("tool call -> "), dim=True)
-        else:
-            name, args_summary = formatted
-            _secho(f"tool call -> {name}", fg="magenta")
-            _secho(f" (args: {args_summary})", dim=True)
-    elif detail.startswith("wrote file "):
-        _secho(detail, fg="green")
-    elif detail.startswith("tool result status="):
-        status = detail.removeprefix("tool result status=")
-        color = "green" if status == "success" else "yellow"
-        _secho("tool result status=", nl=False, fg="black")
-        _secho(status, fg=color)
-    else:
-        _secho(detail, dim=True)
-
-
 def _progress_verbose_live() -> Callable[[str], None]:
     current_step: int | None = None
 
@@ -427,31 +376,35 @@ def _progress_verbose_live() -> Callable[[str], None]:
         if detail.startswith("model text: "):
             _secho("→ model text: ", nl=False, fg="blue")
             _secho(detail.removeprefix("model text: "), dim=True)
-        elif detail.startswith("tool call -> "):
-            formatted = _format_tool_call_detail(detail)
-            if formatted is None:
-                _secho("→ tool call -> ", nl=False, fg="magenta")
-                _secho(detail.removeprefix("tool call -> "), dim=True)
+        elif detail.startswith("llm request payload="):
+            payload_str = detail.removeprefix("llm request payload=")
+            parsed_payload = _parse_json_payload(payload_str)
+            if parsed_payload is None:
+                _secho("→ request payload:", fg="black")
+                _secho(f"  {payload_str}", dim=True)
             else:
-                name, args_summary = formatted
-                _secho(f"→ tool call -> {name}", fg="magenta")
-                _secho(f"  args: {args_summary}", dim=True)
+                _print_rich_json("Request", parsed_payload)
+        elif detail.startswith("llm response payload="):
+            payload_str = detail.removeprefix("llm response payload=")
+            parsed_payload = _parse_json_payload(payload_str)
+            if parsed_payload is None:
+                _secho("→ response payload:", fg="black")
+                _secho(f"  {payload_str}", dim=True)
+            else:
+                _print_rich_json("Response", parsed_payload)
+        elif detail.startswith("tool call -> "):
+            body = detail.removeprefix("tool call -> ").strip()
+            if " args=" not in body:
+                _secho(f"→ tool call -> {body}", fg="magenta")
+            else:
+                name, _args_str = body.split(" args=", 1)
+                _secho(f"→ tool call -> {name.strip()}", fg="magenta")
         elif detail.startswith("wrote file "):
             _secho(f"→ {detail}", fg="green")
         elif detail.startswith("tool result status="):
-            status = detail.removeprefix("tool result status=")
-            color = "green" if status == "success" else "yellow"
-            _secho("→ tool result status=", nl=False, fg="black")
-            _secho(status, fg=color)
+            return
         elif detail.startswith("tool result payload="):
-            payload_str = detail.removeprefix("tool result payload=")
-            parsed_payload = _parse_json_payload(payload_str)
-            _secho("→ tool result payload:", fg="black")
-            if parsed_payload is None:
-                _secho(f"  {payload_str}", dim=True)
-            else:
-                for line in _summarize_tool_result_payload(parsed_payload):
-                    _secho(f"  {line}", dim=True)
+            return
         else:
             _secho(f"→ {detail}", dim=True)
 
@@ -656,7 +609,7 @@ def _print_gemini_usage_summary(
 ) -> None:
     if usage["n_call_count"] <= 0:
         return
-    _echo_section("Gemini Usage")
+    _echo_section("Usage")
     _echo_key_value("n_call_count", str(usage["n_call_count"]), value_color="yellow")
     _echo_key_value("n_prompt_tokens", str(usage["n_prompt_tokens"]))
     _echo_key_value("n_output_tokens", str(usage["n_output_tokens"]))
@@ -697,7 +650,6 @@ def run_agent_authoring(
     output_file: Path | None,
     model: str,
     track_outputs: bool,
-    verbose_llm: bool,
 ) -> dict[str, Any]:
     workspace_env_path = Path("~/llms.env").expanduser()
     load_dotenv(dotenv_path=workspace_env_path)
@@ -719,9 +671,7 @@ def run_agent_authoring(
         track_outputs=track_outputs,
     )
     start = time.perf_counter()
-    progress_callback: Callable[[str], None] | None = (
-        _progress_verbose_live() if verbose_llm else _progress
-    )
+    progress_callback: Callable[[str], None] | None = _progress_verbose_live()
     result = run_agent(
         api_key=api_key,
         run_context=run_context,
@@ -796,13 +746,6 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, Any]:
 @click.group(invoke_without_command=True)
 @click.option("--prompt", required=False, type=str, help="User prompt.")
 @click.option(
-    "--verbose-llm/--less-verbose",
-    "verbose_llm",
-    default=True,
-    show_default=True,
-    help="Show verbose structured execution trace (default). Use --less-verbose for compact logs.",
-)
-@click.option(
     "--output-file",
     type=click.Path(path_type=Path),
     default=None,
@@ -824,7 +767,6 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, Any]:
 @ln.flow("wDJpT3xdqjY8")
 def lag(
     prompt: str | None,
-    verbose_llm: bool,
     output_file: Path | None,
     model: str,
     no_track: bool,
@@ -848,11 +790,6 @@ def lag(
         outcome = execute_existing_from_prompt(prompt_text)
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
-        if verbose_llm:
-            _print_verbose_trace(
-                list(outcome.get("trace_events", [])),
-                title="Execution Trace",
-            )
         if outcome["resolved_paths"]:
             resolved_paths = _parse_generated_paths(str(outcome["resolved_paths"]))
             for resolved_path in resolved_paths:
@@ -883,11 +820,6 @@ def lag(
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
         _echo_key_value("tool", str(outcome["tool_path"]), value_color="magenta")
-        if verbose_llm:
-            _print_verbose_trace(
-                list(outcome.get("trace_events", [])),
-                title="Execution Trace",
-            )
         _log_trace_payload(
             {
                 "action": "execute",
@@ -906,7 +838,6 @@ def lag(
         output_file=output_file,
         model=model,
         track_outputs=not no_track,
-        verbose_llm=verbose_llm,
     )
     gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
     _log_gemini_usage_to_run_features(gemini_usage)
@@ -923,11 +854,6 @@ def lag(
     _print_gemini_usage_summary(
         gemini_usage, trace_events=list(outcome.get("trace_events", []))
     )
-    if verbose_llm:
-        _print_verbose_trace(
-            list(outcome.get("trace_events", [])),
-            title="Authoring Trace",
-        )
     if outcome["generated_path"]:
         _echo_key_value(
             "generated",

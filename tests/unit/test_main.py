@@ -155,11 +155,8 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
     assert "run_uid=run-1" in clean_output
 
 
-def test_lag_auto_authoring_is_verbose_by_default(monkeypatch) -> None:
-    captured: dict[str, bool] = {}
-
+def test_lag_auto_authoring_runs_without_verbose_option(monkeypatch) -> None:
     def _fake_run_agent_authoring(**kwargs):
-        captured["verbose_llm"] = bool(kwargs["verbose_llm"])
         return {
             "run_uid": "run-1",
             "generated_path": None,
@@ -189,44 +186,14 @@ def test_lag_auto_authoring_is_verbose_by_default(monkeypatch) -> None:
     result = runner.invoke(lag, ["--prompt", "build tool"])
 
     assert result.exit_code == 0
-    assert captured["verbose_llm"] is True
 
 
-def test_lag_auto_authoring_allows_less_verbose_flag(monkeypatch) -> None:
-    captured: dict[str, bool] = {}
-
-    def _fake_run_agent_authoring(**kwargs):
-        captured["verbose_llm"] = bool(kwargs["verbose_llm"])
-        return {
-            "run_uid": "run-1",
-            "generated_path": None,
-            "generated_paths": "",
-            "final_text": "ok",
-            "llm_usage": {
-                "n_call_count": 1,
-                "n_prompt_tokens": 1,
-                "n_output_tokens": 1,
-                "n_total_tokens": 2,
-            },
-            "duration_in_sec": 0.1,
-            "trace_events": [],
-        }
-
-    monkeypatch.setattr("laminagent._lag.find_tool_file", lambda: None)
-    monkeypatch.setattr(
-        "laminagent._lag.run_agent_authoring", _fake_run_agent_authoring
-    )
-    monkeypatch.setattr(
-        "laminagent._lag._log_gemini_usage_to_run_features", lambda *_: None
-    )
-    monkeypatch.setattr(
-        "laminagent._lag._log_gemini_usage_record", lambda *_, **__: None
-    )
+def test_lag_rejects_less_verbose_flag() -> None:
     runner = CliRunner()
     result = runner.invoke(lag, ["--less-verbose", "--prompt", "build tool"])
 
-    assert result.exit_code == 0
-    assert captured["verbose_llm"] is False
+    assert result.exit_code != 0
+    assert "No such option" in result.output
 
 
 def test_lag_auto_executes_discovered_tool_file(monkeypatch, tmp_path: Path) -> None:

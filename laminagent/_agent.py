@@ -224,6 +224,12 @@ def run_agent(
             "tools": _tool_payload(),
             "generationConfig": {"temperature": 0.2},
         }
+        if progress_callback is not None:
+            progress_callback(
+                "step "
+                f"{step}: llm request payload="
+                f"{json.dumps(payload, ensure_ascii=False, default=str)}"
+            )
         trace_events.append(
             {
                 "step": step,
@@ -237,6 +243,12 @@ def run_agent(
             payload=payload,
             progress_callback=progress_callback,
         )
+        if progress_callback is not None:
+            progress_callback(
+                "step "
+                f"{step}: llm response payload="
+                f"{json.dumps(data, ensure_ascii=False, default=str)}"
+            )
         usage_metadata = data.get("usageMetadata")
         if isinstance(usage_metadata, dict):
             run_context.llm_usage.add_usage_metadata(usage_metadata)
@@ -281,10 +293,6 @@ def run_agent(
             args = tool_call.get("args", {})
             if not isinstance(args, dict):
                 args = {}
-            if progress_callback is not None:
-                progress_callback(
-                    f"step {step}: tool call -> {name} args={json.dumps(args)}"
-                )
             trace_events.append(
                 {
                     "step": step,
