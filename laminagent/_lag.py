@@ -574,10 +574,6 @@ def _log_gemini_usage_record(
         return
     task = get_task(task_name=task_name)
     if task is None or task.schema_id is None:
-        _echo_warning(
-            f"LagEval task registry '{task_name}' is not configured; "
-            "skipping LagEval usage record (run `lag setup` to enable it)."
-        )
         return
     ln.Record(
         features={
@@ -783,8 +779,6 @@ def lag(
     runnable_keys = _extract_runnable_keys_from_prompt(prompt_text)
     if runnable_keys:
         outcome = execute_existing_from_prompt(prompt_text)
-        _echo_section("Run")
-        _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
         if outcome["resolved_paths"]:
             resolved_paths = _parse_generated_paths(str(outcome["resolved_paths"]))
             for resolved_path in resolved_paths:
@@ -802,7 +796,7 @@ def lag(
             }
         )
         if outcome["final_text"]:
-            _echo_section("Model Output")
+            _echo_section("Notes")
             _secho(str(outcome["final_text"]), dim=True)
         return
 
@@ -812,8 +806,6 @@ def lag(
             prompt=prompt_text,
             tool_file=chosen_tool_file,
         )
-        _echo_section("Run")
-        _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
         _echo_key_value("tool", str(outcome["tool_path"]), value_color="magenta")
         _log_trace_payload(
             {
@@ -844,8 +836,6 @@ def lag(
             str(outcome.get("generated_path") or "") or None
         ),
     )
-    _echo_section("Run")
-    _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
     _print_gemini_usage_summary(
         gemini_usage, trace_events=list(outcome.get("trace_events", []))
     )
@@ -867,7 +857,7 @@ def lag(
         }
     )
     if outcome["final_text"]:
-        _echo_section("Model Output")
+        _echo_section("Notes")
         _secho(str(outcome["final_text"]), dim=True)
 
 

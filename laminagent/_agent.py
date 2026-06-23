@@ -342,10 +342,6 @@ def run_agent(
             if name == "write_python_script" and result.get("status") == "success":
                 final_text = f"Wrote runnable script '{generated_file or 'script.py'}'."
                 short_circuit_execute = True
-                if progress_callback is not None:
-                    progress_callback(
-                        f"step {step}: completed after successful {name} call"
-                    )
                 break
             if progress_callback is not None:
                 status = result.get("status", "ok")
