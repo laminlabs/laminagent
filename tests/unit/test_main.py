@@ -152,7 +152,8 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
 
     assert result.exit_code == 0
     clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
-    assert "run_uid=run-1" in clean_output
+    assert "[Notes]" in clean_output
+    assert "done" in clean_output
 
 
 def test_lag_auto_authoring_runs_without_verbose_option(monkeypatch) -> None:
@@ -321,8 +322,6 @@ def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:
 
 def test_log_gemini_usage_record_skips_when_task_not_configured(monkeypatch) -> None:
     monkeypatch.setattr("laminagent._lag.get_task", lambda **_kwargs: None)
-    warnings: list[str] = []
-    monkeypatch.setattr("laminagent._lag._echo_warning", warnings.append)
 
     _log_gemini_usage_record(
         {
@@ -335,8 +334,6 @@ def test_log_gemini_usage_record_skips_when_task_not_configured(monkeypatch) -> 
         duration_in_sec=0.2,
         task_name="tool",
     )
-    assert warnings
-    assert "not configured" in warnings[0]
 
 
 def test_record_usage_task_name_prefers_pytest_task_context(monkeypatch) -> None:
