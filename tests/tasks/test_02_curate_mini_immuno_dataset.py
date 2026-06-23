@@ -6,10 +6,8 @@ from pathlib import Path
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
-    "Curate `ln.examples.datasets.mini_immuno.get_dataset1()` using "
-    "`ln.examples.datasets.mini_immuno.define_mini_immuno_schema_flexible()` "
-    "and save as a lamindb artifact. "
-    "Write a Python script, not a notebook."
+    "Create a script that curates the lamindb dataset `ln.examples.datasets.mini_immuno.get_dataset1()` using "
+    "`ln.examples.datasets.mini_immuno.define_mini_immuno_schema_flexible()`."
 )
 
 RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
