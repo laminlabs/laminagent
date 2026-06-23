@@ -26,7 +26,7 @@ def test_curate_mini_immuno() -> None:
         f"lag failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
 
-    runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py"))
+    runnable_files = list(RUN_DIR.rglob("*.py"))
     assert runnable_files, (
         f"agent wrote no files\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
