@@ -24,6 +24,7 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
         args={"code": "print('x')"},
         run_context=run_context,
         default_output_file=Path("tool_run.md"),
+        existing_generated_files=[],
     )
     assert captured["filename"].endswith(".py")
     assert captured["filename"] == "tool_run.py"
@@ -31,9 +32,6 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
 
 def test_function_declarations_include_authoring_tools() -> None:
     names = {entry["name"] for entry in _function_declarations()}
-    assert "get_local_skill" in names
-    assert "get_lamindb_skill" in names
-    assert "write_from_template" in names
     assert "write_python_script" in names
 
 
@@ -48,9 +46,27 @@ def test_enforces_explicit_key_filename_reuse() -> None:
         args={"filename": "create_fasta_albumin.py", "code": "print('x')"},
         run_context=run_context,
         default_output_file=Path("analysis.py"),
+        existing_generated_files=[],
     )
     assert result["status"] == "error"
     assert "Update that exact file" in str(result["message"])
+
+
+def test_rejects_second_runnable_filename_in_same_run() -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="write a script",
+        model="m",
+    )
+    result = _dispatch_tool(
+        name="write_python_script",
+        args={"filename": "second.py", "code": "print('x')"},
+        run_context=run_context,
+        default_output_file=Path("analysis.py"),
+        existing_generated_files=["first.py"],
+    )
+    assert result["status"] == "error"
+    assert "already created" in str(result["message"])
 
 
 def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
@@ -121,3 +137,58 @@ def test_run_agent_handles_missing_usage_metadata(monkeypatch) -> None:
         "n_output_tokens": 0,
         "n_total_tokens": 0,
     }
+
+
+def test_run_agent_stops_after_successful_write_python_script(monkeypatch) -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="write a script",
+        model="m",
+    )
+    call_count = {"n": 0}
+    tool_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "functionCall": {
+                                "name": "write_python_script",
+                                "args": {
+                                    "filename": "save_protein.py",
+                                    "code": "print('ok')",
+                                },
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    def _fake_post_generate_content(**_kwargs):
+        call_count["n"] += 1
+        return tool_response
+
+    monkeypatch.setattr(
+        "laminagent._agent._post_generate_content", _fake_post_generate_content
+    )
+    monkeypatch.setattr(
+        "laminagent._agent._dispatch_tool",
+        lambda **_kwargs: {
+            "status": "success",
+            "file": "save_protein.py",
+            "run_uid": "run-1",
+        },
+    )
+
+    result = run_agent(
+        api_key="dummy",
+        run_context=run_context,
+        output_file=Path("out.py"),
+        max_steps=5,
+    )
+
+    assert call_count["n"] == 1
+    assert result["generated_file"] == "save_protein.py"
+    assert result["final_text"] == "Wrote runnable script 'save_protein.py'."

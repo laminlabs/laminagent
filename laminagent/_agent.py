@@ -8,11 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from ._context import get_lamindb_skill, get_local_skill
-from ._writer import (
-    write_from_template,
-    write_python_script,
-)
+from ._writer import write_python_script
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,56 +17,17 @@ if TYPE_CHECKING:
     from ._run_context import RunContext
 
 SYSTEM_INSTRUCTION = (
-    "You are a scientific coding agent. Given a prompt, first consider retrieving relevant context if useful, "
-    "then write runnable Python code in a script leveraging LaminDB for tracking and queries."
+    "You are a scientific coding agent. Write runnable Python code in one script whenever possible. "
+    "For simple requests, call write_python_script exactly once and then finish. "
     "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
-    "write the task directly in the produced runnable scripts."
+    "write the task directly in the produced runnable script. "
     "If the prompt references an existing script, update that script instead of creating a new one. "
-    "You may read skills/query LaminDB for context, but do not write markdown tools."
+    "Do not write defensive code but write concise cosde that assumes the latest version of lamindb."
 )
 
 
 def _function_declarations() -> list[dict[str, Any]]:
-    declarations: list[dict[str, Any]] = [
-        {
-            "name": "get_local_skill",
-            "description": "Find relevant local SKILL.md docs for a topic.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "topic": {"type": "STRING"},
-                    "skills_root": {"type": "STRING"},
-                },
-                "required": ["topic"],
-            },
-        },
-        {
-            "name": "get_lamindb_skill",
-            "description": "Query laminlabs/biomed-skills for relevant transforms/artifacts.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "key": {"type": "STRING"},
-                    "limit": {"type": "NUMBER"},
-                },
-                "required": ["key"],
-            },
-        },
-    ]
-    declarations.append(
-        {
-            "name": "write_from_template",
-            "description": "Create a file from an existing template path.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "template_path": {"type": "STRING"},
-                    "filename": {"type": "STRING"},
-                },
-                "required": ["template_path", "filename"],
-            },
-        }
-    )
+    declarations: list[dict[str, Any]] = []
     declarations.append(
         {
             "name": "write_python_script",
@@ -187,21 +144,8 @@ def _dispatch_tool(
     args: dict[str, Any],
     run_context: RunContext,
     default_output_file: Path,
+    existing_generated_files: list[str],
 ) -> dict[str, Any]:
-    if name == "get_local_skill":
-        return get_local_skill(
-            topic=str(args.get("topic", "")),
-            skills_root=args.get("skills_root"),
-            run_uid=run_context.run_uid,
-        )
-    if name == "get_lamindb_skill":
-        key = str(args.get("key", ""))
-        result = get_lamindb_skill(
-            key=key,
-            limit=int(args.get("limit", 5)),
-            run_uid=run_context.run_uid,
-        )
-        return result
     if name == "write_python_script":
         filename = str(
             args.get("filename") or ""
@@ -218,18 +162,21 @@ def _dispatch_tool(
                 ),
                 "run_uid": run_context.run_uid,
             }
+        if existing_generated_files and filename not in existing_generated_files:
+            existing_name = existing_generated_files[0]
+            return {
+                "status": "error",
+                "message": (
+                    "A runnable script was already created in this run. "
+                    f"Update '{existing_name}' instead of creating '{filename}'."
+                ),
+                "run_uid": run_context.run_uid,
+            }
         return write_python_script(
             code=code,
             filename=filename,
             run_uid=run_context.run_uid,
             track_outputs=run_context.track_outputs,
-        )
-    if name == "write_from_template":
-        filename = str(args.get("filename") or default_output_file)
-        return write_from_template(
-            template_path=str(args.get("template_path", "")),
-            filename=filename,
-            run_uid=run_context.run_uid,
         )
     return {
         "status": "error",
@@ -277,6 +224,12 @@ def run_agent(
             "tools": _tool_payload(),
             "generationConfig": {"temperature": 0.2},
         }
+        if progress_callback is not None:
+            progress_callback(
+                "step "
+                f"{step}: llm request payload="
+                f"{json.dumps(payload, ensure_ascii=False, default=str)}"
+            )
         trace_events.append(
             {
                 "step": step,
@@ -290,6 +243,12 @@ def run_agent(
             payload=payload,
             progress_callback=progress_callback,
         )
+        if progress_callback is not None:
+            progress_callback(
+                "step "
+                f"{step}: llm response payload="
+                f"{json.dumps(data, ensure_ascii=False, default=str)}"
+            )
         usage_metadata = data.get("usageMetadata")
         if isinstance(usage_metadata, dict):
             run_context.llm_usage.add_usage_metadata(usage_metadata)
@@ -334,10 +293,6 @@ def run_agent(
             args = tool_call.get("args", {})
             if not isinstance(args, dict):
                 args = {}
-            if progress_callback is not None:
-                progress_callback(
-                    f"step {step}: tool call -> {name} args={json.dumps(args)}"
-                )
             trace_events.append(
                 {
                     "step": step,
@@ -352,6 +307,7 @@ def run_agent(
                 args=args,
                 run_context=run_context,
                 default_output_file=output_file,
+                existing_generated_files=generated_files,
             )
             generated = result.get("file")
             if isinstance(generated, str) and generated:
@@ -383,6 +339,10 @@ def run_agent(
                     ],
                 }
             )
+            if name == "write_python_script" and result.get("status") == "success":
+                final_text = f"Wrote runnable script '{generated_file or 'script.py'}'."
+                short_circuit_execute = True
+                break
             if progress_callback is not None:
                 status = result.get("status", "ok")
                 progress_callback(f"step {step}: tool result status={status}")

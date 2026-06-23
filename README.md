@@ -42,7 +42,7 @@ If these records are missing, `lag` still runs; run `lag setup` when you also wa
 
 - If `--prompt` includes explicit runnable `.py` keys/paths, `lag` executes those scripts.
 - Otherwise, if `tool.md` (or latest `tool_*.md`) exists, `lag` executes scripts referenced there.
-- Otherwise, `lag` invokes LLM authoring to create/update a runnable `.py` script and saves it with `lamin save`.
+- Otherwise, `lag` invokes LLM authoring to create/update a runnable `.py` script and saves it via `ln.Transform`.
 
 ### Setup mode (`setup`)
 
