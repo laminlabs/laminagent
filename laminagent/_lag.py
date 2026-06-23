@@ -335,10 +335,6 @@ def _print_verbose_trace(trace_events: list[dict[str, Any]], *, title: str) -> N
 
 def _progress(message: str) -> None:
     logger.info(_format_progress_message_for_log(message))
-    if message.startswith("mode="):
-        pretty_message = message.replace("mode=do", "mode=default")
-        _echo_info(pretty_message)
-        return
     if message.startswith("prompt: "):
         _secho("→ prompt: ", nl=False, fg="black")
         _secho(message.removeprefix("prompt: "), fg="cyan")
@@ -396,10 +392,6 @@ def _progress_verbose_live() -> Callable[[str], None]:
     def _callback(message: str) -> None:
         nonlocal current_step
         logger.info(_format_progress_message_for_log(message))
-        if message.startswith("mode="):
-            pretty_message = message.replace("mode=do", "mode=default")
-            _echo_info(pretty_message)
-            return
         if message.startswith("prompt: "):
             _secho("→ prompt: ", nl=False, fg="black")
             _secho(message.removeprefix("prompt: "), fg="cyan")
@@ -529,10 +521,6 @@ def _resolve_existing_runnable_path(key: str) -> Path:
 
 def _resolve_prompt_runnable_paths(prompt: str) -> list[Path]:
     keys = _extract_runnable_keys_from_prompt(prompt)
-    if not keys:
-        raise click.ClickException(
-            "Default mode executes existing tools only. Include at least one .py tool key/path in --prompt, or use --tool to create/update tools."
-        )
     return [_resolve_existing_runnable_path(key) for key in keys]
 
 
@@ -609,7 +597,7 @@ def _record_usage_task_name(generated_path: str | None) -> str:
 
     if generated_path:
         return normalize_task_name(Path(generated_path).name)
-    return "lag_tool_mode"
+    return "lag_authoring"
 
 
 def _log_trace_payload(payload: dict[str, Any]) -> None:
@@ -620,7 +608,7 @@ def _log_trace_payload(payload: dict[str, Any]) -> None:
     trace_events = redacted.get("trace_events")
     n_trace_events = len(trace_events) if isinstance(trace_events, list) else 0
     summary = {
-        "mode": redacted.get("mode"),
+        "action": redacted.get("action"),
         "run_uid": redacted.get("run_uid"),
         "model": redacted.get("model"),
         "n_trace_events": n_trace_events,
@@ -705,9 +693,8 @@ def _current_package_version() -> str:
         return "0.0.0"
 
 
-def run_agent_mode(
+def run_agent_authoring(
     *,
-    mode: str,
     prompt: str,
     output_file: Path | None,
     model: str,
@@ -724,12 +711,11 @@ def run_agent_mode(
     run_uid = create_run_uid(lamindb_run_uid)
 
     suffix = "py"
-    default_name = f"{mode}_{run_uid}.{suffix}"
+    default_name = f"author_{run_uid}.{suffix}"
     output_path = output_file or Path(default_name)
 
     run_context = RunContext(
         run_uid=run_uid,
-        mode=mode,
         prompt=prompt,
         model=model,
         track_outputs=track_outputs,
@@ -759,8 +745,7 @@ def run_agent_mode(
         and resolved_runnable_path not in generated_files
     ):
         generated_files.append(resolved_runnable_path)
-    if mode == "tool":
-        save_generated_tool_files(generated_files)
+    save_generated_tool_files(generated_files)
     return {
         "run_uid": run_uid,
         "generated_path": generated_file if isinstance(generated_file, str) else None,
@@ -787,27 +772,6 @@ def execute_the_tool(
     return {
         "run_uid": run_uid,
         "tool_path": str(tool_file),
-        "final_text": str(result.get("final_text", "")),
-        "trace_events": result.get("trace_events", []),
-    }
-
-
-def execute_generated(
-    *,
-    prompt: str,
-    generated_paths_csv: str,
-) -> dict[str, Any]:
-    lamindb_run_uid = str(getattr(ln.context.run, "uid", "") or "") or None
-    run_uid = create_run_uid(lamindb_run_uid)
-    runnable_paths = _parse_generated_paths(generated_paths_csv)
-    result = execute_runnable_paths(
-        prompt=prompt,
-        runnable_paths=runnable_paths,
-        run_uid=run_uid,
-        source="generated_outputs",
-    )
-    return {
-        "run_uid": run_uid,
         "final_text": str(result.get("final_text", "")),
         "trace_events": result.get("trace_events", []),
     }
@@ -842,19 +806,12 @@ def execute_existing_from_prompt(prompt: str) -> dict[str, Any]:
     help="Show verbose structured execution trace (default). Use --less-verbose for compact logs.",
 )
 @click.option(
-    "--tool",
-    "tool_mode",
-    is_flag=True,
-    help="Switch to toolning mode (tool generation).",
-)
-@click.option("--output-file", type=click.Path(path_type=Path), default=None)
-@click.option("--model", type=str, default="gemini-flash-latest", show_default=True)
-@click.option(
-    "--tool-file",
-    type=click.Path(path_type=Path, exists=True),
+    "--output-file",
+    type=click.Path(path_type=Path),
     default=None,
-    help="Optional path to tool file to execute in default mode.",
+    help="Optional output filename when authoring a new script.",
 )
+@click.option("--model", type=str, default="gemini-flash-latest", show_default=True)
 @click.option(
     "--no-track",
     is_flag=True,
@@ -872,10 +829,8 @@ def lag(
     ctx: click.Context,
     prompt: str | None,
     verbose_llm: bool,
-    tool_mode: bool,
     output_file: Path | None,
     model: str,
-    tool_file: Path | None,
     no_track: bool,
     project: str | None,
 ) -> None:
@@ -885,50 +840,35 @@ def lag(
 
     if not prompt:
         raise click.UsageError(
-            "`--prompt` is required for default lag mode; use `lag setup` to initialize setup records."
+            "`--prompt` is required for lag; use `lag setup` to initialize setup records."
         )
     _ensure_info_verbosity()
     prompt_text = prompt
 
     _warn_if_missing_project(project)
-    if tool_mode:
-        outcome = run_agent_mode(
-            mode="tool",
-            prompt=prompt_text,
-            output_file=output_file,
-            model=model,
-            track_outputs=not no_track,
-            verbose_llm=verbose_llm,
-        )
-        gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
-        _log_gemini_usage_to_run_features(gemini_usage)
-        _log_gemini_usage_record(
-            gemini_usage,
-            package_version=_current_package_version(),
-            duration_in_sec=float(outcome.get("duration_in_sec", 0.0) or 0.0),
-            task_name=_record_usage_task_name(
-                str(outcome.get("generated_path") or "") or None
-            ),
-        )
+    runnable_keys = _extract_runnable_keys_from_prompt(prompt_text)
+    if runnable_keys:
+        outcome = execute_existing_from_prompt(prompt_text)
         _echo_section("Run")
         _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
-        _print_gemini_usage_summary(
-            gemini_usage, trace_events=list(outcome.get("trace_events", []))
-        )
-        if outcome["generated_path"]:
-            _echo_key_value(
-                "generated",
-                str(outcome["generated_path"]),
-                value_color="bright_magenta",
+        if verbose_llm:
+            _print_verbose_trace(
+                list(outcome.get("trace_events", [])),
+                title="Execution Trace",
             )
+        if outcome["resolved_paths"]:
+            resolved_paths = _parse_generated_paths(str(outcome["resolved_paths"]))
+            for resolved_path in resolved_paths:
+                _echo_key_value(
+                    "resolved", str(resolved_path), value_color="bright_magenta"
+                )
         _log_trace_payload(
             {
-                "mode": "tool",
+                "action": "execute",
                 "run_uid": str(outcome["run_uid"]),
                 "prompt": prompt_text,
-                "model": model,
+                "resolved_paths": str(outcome.get("resolved_paths", "")),
                 "trace_events": list(outcome.get("trace_events", [])),
-                "llm_usage": gemini_usage,
                 "final_text": str(outcome.get("final_text", "")),
             }
         )
@@ -937,7 +877,7 @@ def lag(
             _secho(str(outcome["final_text"]), dim=True)
         return
 
-    chosen_tool_file = find_tool_file(tool_file)
+    chosen_tool_file = find_tool_file()
     if chosen_tool_file is not None:
         outcome = execute_the_tool(
             prompt=prompt_text,
@@ -953,7 +893,7 @@ def lag(
             )
         _log_trace_payload(
             {
-                "mode": "tool_file",
+                "action": "execute",
                 "run_uid": str(outcome["run_uid"]),
                 "prompt": prompt_text,
                 "tool_path": str(outcome["tool_path"]),
@@ -964,36 +904,50 @@ def lag(
         _secho(str(outcome["final_text"]), dim=True)
         return
 
-    outcome = execute_existing_from_prompt(prompt_text)
+    outcome = run_agent_authoring(
+        prompt=prompt_text,
+        output_file=output_file,
+        model=model,
+        track_outputs=not no_track,
+        verbose_llm=verbose_llm,
+    )
+    gemini_usage = _normalize_gemini_usage(outcome.get("llm_usage"))
+    _log_gemini_usage_to_run_features(gemini_usage)
+    _log_gemini_usage_record(
+        gemini_usage,
+        package_version=_current_package_version(),
+        duration_in_sec=float(outcome.get("duration_in_sec", 0.0) or 0.0),
+        task_name=_record_usage_task_name(
+            str(outcome.get("generated_path") or "") or None
+        ),
+    )
     _echo_section("Run")
     _echo_key_value("run_uid", str(outcome["run_uid"]), value_color="green")
+    _print_gemini_usage_summary(
+        gemini_usage, trace_events=list(outcome.get("trace_events", []))
+    )
     if verbose_llm:
         _print_verbose_trace(
             list(outcome.get("trace_events", [])),
-            title="Execution Trace",
+            title="Authoring Trace",
         )
-    if outcome["resolved_paths"]:
-        resolved_paths = _parse_generated_paths(str(outcome["resolved_paths"]))
-        for resolved_path in resolved_paths:
-            _echo_key_value(
-                "resolved", str(resolved_path), value_color="bright_magenta"
-            )
-    _log_trace_payload(
-        {
-            "mode": "default",
-            "run_uid": str(outcome["run_uid"]),
-            "prompt": prompt_text,
-            "resolved_paths": str(outcome.get("resolved_paths", "")),
-            "trace_events": list(outcome.get("trace_events", [])),
-            "final_text": str(outcome.get("final_text", "")),
-        }
-    )
-    if outcome.get("generated_path"):
+    if outcome["generated_path"]:
         _echo_key_value(
             "generated",
             str(outcome["generated_path"]),
             value_color="bright_magenta",
         )
+    _log_trace_payload(
+        {
+            "action": "author",
+            "run_uid": str(outcome["run_uid"]),
+            "prompt": prompt_text,
+            "model": model,
+            "trace_events": list(outcome.get("trace_events", [])),
+            "llm_usage": gemini_usage,
+            "final_text": str(outcome.get("final_text", "")),
+        }
+    )
     if outcome["final_text"]:
         _echo_section("Model Output")
         _secho(str(outcome["final_text"]), dim=True)

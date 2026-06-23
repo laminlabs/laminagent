@@ -95,11 +95,8 @@ def test_extract_runnable_keys_from_prompt_deduplicates() -> None:
     assert keys == ["test-lag/create_fasta.py", "x.py"]
 
 
-def test_resolve_prompt_runnable_paths_requires_explicit_key() -> None:
-    with pytest.raises(
-        click.ClickException, match="Default mode executes existing tools only"
-    ):
-        _resolve_prompt_runnable_paths("please rerun the tool")
+def test_resolve_prompt_runnable_paths_returns_empty_without_keys() -> None:
+    assert _resolve_prompt_runnable_paths("please rerun the tool") == []
 
 
 def test_lag_setup_routes_to_setup_handler(monkeypatch) -> None:
@@ -133,7 +130,7 @@ def test_lag_setup_accepts_script_argument(tmp_path: Path, monkeypatch) -> None:
     assert called["script"] == script
 
 
-def test_lag_default_mode_still_requires_prompt() -> None:
+def test_lag_still_requires_prompt() -> None:
     runner = CliRunner()
     result = runner.invoke(lag, [])
     assert result.exit_code != 0
@@ -160,10 +157,10 @@ def test_lag_default_mode_executes_prompt_path(monkeypatch) -> None:
     assert "run_uid=run-1" in clean_output
 
 
-def test_lag_tool_mode_is_verbose_by_default(monkeypatch) -> None:
+def test_lag_auto_authoring_is_verbose_by_default(monkeypatch) -> None:
     captured: dict[str, bool] = {}
 
-    def _fake_run_agent_mode(**kwargs):
+    def _fake_run_agent_authoring(**kwargs):
         captured["verbose_llm"] = bool(kwargs["verbose_llm"])
         return {
             "run_uid": "run-1",
@@ -180,7 +177,10 @@ def test_lag_tool_mode_is_verbose_by_default(monkeypatch) -> None:
             "trace_events": [],
         }
 
-    monkeypatch.setattr("laminagent._lag.run_agent_mode", _fake_run_agent_mode)
+    monkeypatch.setattr("laminagent._lag.find_tool_file", lambda: None)
+    monkeypatch.setattr(
+        "laminagent._lag.run_agent_authoring", _fake_run_agent_authoring
+    )
     monkeypatch.setattr(
         "laminagent._lag._log_gemini_usage_to_run_features", lambda *_: None
     )
@@ -188,16 +188,16 @@ def test_lag_tool_mode_is_verbose_by_default(monkeypatch) -> None:
         "laminagent._lag._log_gemini_usage_record", lambda *_, **__: None
     )
     runner = CliRunner()
-    result = runner.invoke(lag, ["--tool", "--prompt", "build tool"])
+    result = runner.invoke(lag, ["--prompt", "build tool"])
 
     assert result.exit_code == 0
     assert captured["verbose_llm"] is True
 
 
-def test_lag_tool_mode_allows_less_verbose_flag(monkeypatch) -> None:
+def test_lag_auto_authoring_allows_less_verbose_flag(monkeypatch) -> None:
     captured: dict[str, bool] = {}
 
-    def _fake_run_agent_mode(**kwargs):
+    def _fake_run_agent_authoring(**kwargs):
         captured["verbose_llm"] = bool(kwargs["verbose_llm"])
         return {
             "run_uid": "run-1",
@@ -214,7 +214,10 @@ def test_lag_tool_mode_allows_less_verbose_flag(monkeypatch) -> None:
             "trace_events": [],
         }
 
-    monkeypatch.setattr("laminagent._lag.run_agent_mode", _fake_run_agent_mode)
+    monkeypatch.setattr("laminagent._lag.find_tool_file", lambda: None)
+    monkeypatch.setattr(
+        "laminagent._lag.run_agent_authoring", _fake_run_agent_authoring
+    )
     monkeypatch.setattr(
         "laminagent._lag._log_gemini_usage_to_run_features", lambda *_: None
     )
@@ -222,10 +225,36 @@ def test_lag_tool_mode_allows_less_verbose_flag(monkeypatch) -> None:
         "laminagent._lag._log_gemini_usage_record", lambda *_, **__: None
     )
     runner = CliRunner()
-    result = runner.invoke(lag, ["--tool", "--less-verbose", "--prompt", "build tool"])
+    result = runner.invoke(lag, ["--less-verbose", "--prompt", "build tool"])
 
     assert result.exit_code == 0
     assert captured["verbose_llm"] is False
+
+
+def test_lag_auto_executes_discovered_tool_file(monkeypatch, tmp_path: Path) -> None:
+    tool_file = tmp_path / "tool.md"
+    tool_file.write_text("- run `a.py`\n", encoding="utf-8")
+    called: dict[str, str] = {}
+
+    monkeypatch.setattr("laminagent._lag.find_tool_file", lambda: tool_file)
+
+    def _fake_execute_the_tool(prompt: str, tool_file: Path) -> dict[str, str | list]:
+        called["prompt"] = prompt
+        called["tool"] = str(tool_file)
+        return {
+            "run_uid": "run-1",
+            "tool_path": str(tool_file),
+            "final_text": "done",
+            "trace_events": [],
+        }
+
+    monkeypatch.setattr("laminagent._lag.execute_the_tool", _fake_execute_the_tool)
+    runner = CliRunner()
+    result = runner.invoke(lag, ["--prompt", "please run latest tool"])
+
+    assert result.exit_code == 0
+    assert called["prompt"] == "please run latest tool"
+    assert called["tool"] == str(tool_file)
 
 
 def test_trace_is_logged_with_redaction(monkeypatch) -> None:
