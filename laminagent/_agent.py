@@ -20,10 +20,12 @@ if TYPE_CHECKING:
 
     from ._run_context import RunContext
 
-PLAN_SYSTEM_INSTRUCTION = (
-    "You are a tool authoring agent. Create or update runnable "
-    "tool files (.py only) that satisfy the prompt. If the prompt references an "
-    "explicit tool key/path, update that exact file instead of creating a new name. "
+SYSTEM_INSTRUCTION = (
+    "You are a scientific coding agent. Given a prompt, first consider retrieving relevant context if useful, "
+    "then write runnable Python code in a script leveraging LaminDB for tracking and queries."
+    "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
+    "write the task directly in the produced runnable scripts."
+    "If the prompt references an existing script, update that script instead of creating a new one. "
     "You may read skills/query LaminDB for context, but do not write markdown tools."
 )
 
@@ -244,7 +246,6 @@ def run_agent(
     max_steps: int = 20,
     progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    system_instruction = PLAN_SYSTEM_INSTRUCTION
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{run_context.model}:generateContent"
@@ -253,7 +254,7 @@ def run_agent(
         {
             "role": "user",
             "parts": [
-                {"text": f"{system_instruction}\n\nPrompt: {run_context.prompt}"},
+                {"text": f"{SYSTEM_INSTRUCTION}\n\nPrompt: {run_context.prompt}"},
             ],
         }
     ]
