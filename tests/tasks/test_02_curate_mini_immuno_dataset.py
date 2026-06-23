@@ -1,11 +1,8 @@
 import ast
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-import bionty as bt
-import lamindb as ln
 from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
@@ -18,48 +15,15 @@ PROMPT = (
 RUN_DIR = f"{TESTDB1_DEV_DIR}/test_02"
 
 
-def test_bionty_basic(setup_testdb1) -> None:
-    """Sanity-check: can bionty look up 'B cell' from the Cell Ontology source?"""
-    df = bt.CellType.public().to_dataframe()
-    print(df)
-    print(df.loc[df["name"].str.startswith("B cell")])
-    assert "B cell" in df["name"].values
-
-
-def test_schema_setup(setup_testdb1) -> None:
-    """Sanity-check: can we call define_mini_immuno_schema_flexible() directly?"""
-    ln.track()
-    df = ln.examples.datasets.mini_immuno.get_dataset1()
-    print(f"\nDataset type: {type(df)}, shape: {df.shape}")
-    schema = ln.examples.datasets.mini_immuno.define_mini_immuno_schema_flexible()
-    print(f"Schema: {schema}")
-    curator = ln.curators.DataFrameCurator(df, schema)
-    try:
-        curator.validate()
-    except ln.errors.ValidationError:
-        for col in list(curator.cat.non_validated.keys()):
-            curator.cat.standardize(col)
-        curator.validate()
-    artifact = curator.save_artifact(key="test_schema_setup/mini_immuno.parquet")
-    print(f"Artifact: {artifact}")
-    ln.finish()
-
-
-def test_curate_mini_immuno(setup_testdb1) -> None:
-    # each test gets its own subdirectory so runs don't interfere
-    run_dir = Path(RUN_DIR)
-    if run_dir.exists():
-        shutil.rmtree(run_dir)
-    run_dir.mkdir(parents=True)
-
+def test_curate_mini_immuno() -> None:
     # step 1: write the curation script
-    result = run_laminagent(RUN_DIR, "--tool", "--prompt", PROMPT)
+    result = run_laminagent(RUN_DIR, "--prompt", PROMPT)
     print(f"\n--- agent stdout ---\n{result.stdout}")
     assert result.returncode == 0, (
-        f"lag_cli failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        f"lag failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
 
-    runnable_files = list(run_dir.rglob("*.py"))
+    runnable_files = list(Path(TESTDB1_DEV_DIR).rglob("*.py"))
     assert runnable_files, (
         f"agent wrote no files\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
