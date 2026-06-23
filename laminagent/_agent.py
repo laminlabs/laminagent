@@ -8,10 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from ._writer import (
-    write_from_template,
-    write_python_script,
-)
+from ._writer import write_python_script
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,20 +27,7 @@ SYSTEM_INSTRUCTION = (
 
 
 def _function_declarations() -> list[dict[str, Any]]:
-    declarations: list[dict[str, Any]] = [
-        {
-            "name": "write_from_template",
-            "description": "Create a file from an existing template path.",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "template_path": {"type": "STRING"},
-                    "filename": {"type": "STRING"},
-                },
-                "required": ["template_path", "filename"],
-            },
-        }
-    ]
+    declarations: list[dict[str, Any]] = []
     declarations.append(
         {
             "name": "write_python_script",
@@ -193,13 +177,6 @@ def _dispatch_tool(
             filename=filename,
             run_uid=run_context.run_uid,
             track_outputs=run_context.track_outputs,
-        )
-    if name == "write_from_template":
-        filename = str(args.get("filename") or default_output_file)
-        return write_from_template(
-            template_path=str(args.get("template_path", "")),
-            filename=filename,
-            run_uid=run_context.run_uid,
         )
     return {
         "status": "error",

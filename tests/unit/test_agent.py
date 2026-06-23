@@ -32,7 +32,6 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
 
 def test_function_declarations_include_authoring_tools() -> None:
     names = {entry["name"] for entry in _function_declarations()}
-    assert "write_from_template" in names
     assert "write_python_script" in names
 
 
