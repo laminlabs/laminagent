@@ -137,3 +137,58 @@ def test_run_agent_handles_missing_usage_metadata(monkeypatch) -> None:
         "n_output_tokens": 0,
         "n_total_tokens": 0,
     }
+
+
+def test_run_agent_stops_after_successful_write_python_script(monkeypatch) -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="write a script",
+        model="m",
+    )
+    call_count = {"n": 0}
+    tool_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "functionCall": {
+                                "name": "write_python_script",
+                                "args": {
+                                    "filename": "save_protein.py",
+                                    "code": "print('ok')",
+                                },
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    def _fake_post_generate_content(**_kwargs):
+        call_count["n"] += 1
+        return tool_response
+
+    monkeypatch.setattr(
+        "laminagent._agent._post_generate_content", _fake_post_generate_content
+    )
+    monkeypatch.setattr(
+        "laminagent._agent._dispatch_tool",
+        lambda **_kwargs: {
+            "status": "success",
+            "file": "save_protein.py",
+            "run_uid": "run-1",
+        },
+    )
+
+    result = run_agent(
+        api_key="dummy",
+        run_context=run_context,
+        output_file=Path("out.py"),
+        max_steps=5,
+    )
+
+    assert call_count["n"] == 1
+    assert result["generated_file"] == "save_protein.py"
+    assert result["final_text"] == "Wrote runnable script 'save_protein.py'."
