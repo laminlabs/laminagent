@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
+from ._context import read_skill_from_lamindb_instance
 from ._writer import write_python_script
 
 if TYPE_CHECKING:
@@ -22,6 +23,8 @@ SYSTEM_INSTRUCTION = (
     "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
     "write the task directly in the produced runnable script. "
     "If the prompt references an existing script, update that script instead of creating a new one. "
+    "If the prompt references a biomed skill UID and instance, call read_skill_from_lamindb_instance "
+    "before writing code and follow the returned README instructions. "
     "Do not write defensive code but write concise cosde that assumes the latest version of lamindb."
 )
 
@@ -39,6 +42,22 @@ def _function_declarations() -> list[dict[str, Any]]:
                     "code": {"type": "STRING"},
                 },
                 "required": ["filename", "code"],
+            },
+        }
+    )
+    declarations.append(
+        {
+            "name": "read_skill_from_lamindb_instance",
+            "description": (
+                "Read a skill README content by uid from a LaminDB instance."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "uid": {"type": "STRING"},
+                    "instance_slug": {"type": "STRING"},
+                },
+                "required": ["uid"],
             },
         }
     )
@@ -146,6 +165,21 @@ def _dispatch_tool(
     default_output_file: Path,
     existing_generated_files: list[str],
 ) -> dict[str, Any]:
+    if name == "read_skill_from_lamindb_instance":
+        uid = str(args.get("uid") or "").strip()
+        if not uid:
+            return {
+                "status": "error",
+                "message": "Missing required argument: uid",
+                "run_uid": run_context.run_uid,
+            }
+        instance_slug = str(args.get("instance_slug") or "").strip()
+        return read_skill_from_lamindb_instance(
+            uid=uid,
+            run_uid=run_context.run_uid,
+            instance_slug=instance_slug or "laminlabs/biomed-skills",
+        )
+
     if name == "write_python_script":
         filename = str(
             args.get("filename") or ""

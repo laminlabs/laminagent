@@ -180,6 +180,15 @@ def _summarize_tool_result_payload(payload: object) -> list[str]:
         lines.append(f"file: {payload['file']}")
     if isinstance(payload.get("key"), str) and payload.get("key"):
         lines.append(f"query key: {payload['key']}")
+    if isinstance(payload.get("skill_uid"), str) and payload.get("skill_uid"):
+        lines.append(f"skill uid: {payload['skill_uid']}")
+    if isinstance(payload.get("source_instance"), str) and payload.get(
+        "source_instance"
+    ):
+        lines.append(f"source instance: {payload['source_instance']}")
+    content = payload.get("content")
+    if isinstance(content, str):
+        lines.append(f"content_chars: {len(content)}")
 
     searched = payload.get("searched_instances")
     if isinstance(searched, list) and searched:
@@ -228,6 +237,8 @@ def _summarize_tool_call_args(payload: object) -> str:
     if not isinstance(payload, dict) or not payload:
         return "no arguments"
     key = payload.get("key")
+    uid = payload.get("uid")
+    instance_slug = payload.get("instance_slug")
     topic = payload.get("topic")
     filename = payload.get("filename")
     template_path = payload.get("template_path")
@@ -237,6 +248,10 @@ def _summarize_tool_call_args(payload: object) -> str:
     parts: list[str] = []
     if isinstance(key, str) and key:
         parts.append(f"key='{key}'")
+    if isinstance(uid, str) and uid:
+        parts.append(f"uid='{uid}'")
+    if isinstance(instance_slug, str) and instance_slug:
+        parts.append(f"instance_slug='{instance_slug}'")
     if isinstance(topic, str) and topic:
         parts.append(f"topic='{topic}'")
     if isinstance(filename, str) and filename:

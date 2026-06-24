@@ -277,9 +277,15 @@ def test_format_progress_message_for_log_summarizes_tool_payload() -> None:
 
 
 def test_format_progress_message_for_log_summarizes_tool_call_args() -> None:
-    message = 'step 2: tool call -> get_lamindb_skill args={"key":"artifact"}'
+    message = (
+        "step 2: tool call -> read_skill_from_lamindb_instance "
+        'args={"uid":"u5muNUOPnWPBuZ8z","instance_slug":"laminlabs/biomed-skills"}'
+    )
     formatted = _format_progress_message_for_log(message)
-    assert formatted == "step 2: tool call -> get_lamindb_skill (key='artifact')"
+    assert (
+        formatted == "step 2: tool call -> read_skill_from_lamindb_instance "
+        "(uid='u5muNUOPnWPBuZ8z', instance_slug='laminlabs/biomed-skills')"
+    )
 
 
 def test_log_gemini_usage_record_writes_record(monkeypatch) -> None:

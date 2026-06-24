@@ -33,6 +33,7 @@ def test_defaults_python_extension_by_tool_type(monkeypatch) -> None:
 def test_function_declarations_include_authoring_tools() -> None:
     names = {entry["name"] for entry in _function_declarations()}
     assert "write_python_script" in names
+    assert "read_skill_from_lamindb_instance" in names
 
 
 def test_enforces_explicit_key_filename_reuse() -> None:
@@ -67,6 +68,55 @@ def test_rejects_second_runnable_filename_in_same_run() -> None:
     )
     assert result["status"] == "error"
     assert "already created" in str(result["message"])
+
+
+def test_dispatch_read_skill_from_lamindb_instance(monkeypatch) -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="read skill",
+        model="m",
+    )
+
+    monkeypatch.setattr(
+        "laminagent._agent.read_skill_from_lamindb_instance",
+        lambda **kwargs: {
+            "status": "success",
+            "skill_uid": kwargs["uid"],
+            "source_instance": kwargs["instance_slug"],
+            "content": "abc",
+            "run_uid": kwargs["run_uid"],
+            "warnings": [],
+            "message": "ok",
+        },
+    )
+
+    result = _dispatch_tool(
+        name="read_skill_from_lamindb_instance",
+        args={"uid": "u5muNUOPnWPBuZ8z", "instance_slug": "laminlabs/biomed-skills"},
+        run_context=run_context,
+        default_output_file=Path("analysis.py"),
+        existing_generated_files=[],
+    )
+    assert result["status"] == "success"
+    assert result["skill_uid"] == "u5muNUOPnWPBuZ8z"
+    assert result["source_instance"] == "laminlabs/biomed-skills"
+
+
+def test_dispatch_read_skill_requires_uid() -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="read skill",
+        model="m",
+    )
+    result = _dispatch_tool(
+        name="read_skill_from_lamindb_instance",
+        args={},
+        run_context=run_context,
+        default_output_file=Path("analysis.py"),
+        existing_generated_files=[],
+    )
+    assert result["status"] == "error"
+    assert "uid" in str(result["message"])
 
 
 def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:

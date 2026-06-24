@@ -122,3 +122,51 @@ def test_get_lamindb_skill_falls_back_to_biomed_skills(monkeypatch) -> None:
     ]
     assert len(result["results"]) == 1
     assert result["results"][0]["type"] == "artifact"
+
+
+def test_read_skill_from_lamindb_instance_success(monkeypatch) -> None:
+    class _FakeABlocks:
+        @staticmethod
+        def get(*, kind: str):
+            assert kind == "readme"
+            return SimpleNamespace(content="Use DataFrameCurator.")
+
+    class _FakeRecord:
+        ablocks = _FakeABlocks()
+
+    class _FakeRecordRegistry:
+        @staticmethod
+        def get(uid: str):
+            assert uid == "u5muNUOPnWPBuZ8z"
+            return _FakeRecord()
+
+    class _FakeSkillDB:
+        Record = _FakeRecordRegistry()
+
+    monkeypatch.setattr(context.ln, "DB", lambda _slug: _FakeSkillDB())
+
+    result = context.read_skill_from_lamindb_instance(
+        uid="u5muNUOPnWPBuZ8z",
+        run_uid="run-1",
+        instance_slug="laminlabs/biomed-skills",
+    )
+    assert result["status"] == "success"
+    assert result["skill_uid"] == "u5muNUOPnWPBuZ8z"
+    assert result["source_instance"] == "laminlabs/biomed-skills"
+    assert "DataFrameCurator" in result["content"]
+
+
+def test_read_skill_from_lamindb_instance_error_is_soft(monkeypatch) -> None:
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("db unavailable")
+
+    monkeypatch.setattr(context.ln, "DB", _raise)
+
+    result = context.read_skill_from_lamindb_instance(
+        uid="u5muNUOPnWPBuZ8z",
+        run_uid="run-1",
+        instance_slug="laminlabs/biomed-skills",
+    )
+    assert result["status"] == "error"
+    assert result["content"] == ""
+    assert "Could not open DB" in result["warnings"][0]
