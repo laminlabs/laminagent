@@ -18,7 +18,6 @@ def lint(session: nox.Session) -> None:
 def test(session: nox.Session, group: str) -> None:
     if group == "tasks":
         coverage_args = []
-        session.run("pip", "install", "anndata", external=True)
     else:
         coverage_args = [
             "--cov=laminagent",
