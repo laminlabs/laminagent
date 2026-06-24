@@ -35,6 +35,7 @@ def test_curate_mini_immuno() -> None:
     script = runnable_files[0]
     code = script.read_text()
     ast.parse(code)
+    print(code)
     assert "ln.curators.DataFrameCurator" in code, (
         f"{script.name} uses wrong curator class — must use ln.curators.DataFrameCurator"
     )
