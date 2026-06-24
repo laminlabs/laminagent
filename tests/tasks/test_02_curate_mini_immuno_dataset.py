@@ -8,8 +8,7 @@ from testutils import TESTDB1_DEV_DIR, run_laminagent
 
 PROMPT = (
     "Create a script that curates artifact AsTXi6hzDFM7L17t0004 from the laminlabs/lamindata LaminDB instance using "
-    "schema pnQvQVcQ417bfmVq."
-    "Follow best practices: https://docs.lamin.ai/curate.md"
+    "schema pnQvQVcQ417bfmVq using biomed-skill u5muNUOPnWPBuZ8z from instance laminlabs/biomed-skills."
 )
 
 RUN_DIR = Path(f"{TESTDB1_DEV_DIR}/test_02")
