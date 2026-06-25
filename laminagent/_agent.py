@@ -180,8 +180,7 @@ def _dispatch_tool(
         return read_skill_from_lamindb_instance(
             uid=uid,
             run_uid=run_context.run_uid,
-            instance_slug=instance_slug or "laminlabs/biomed-skills",
-            progress_callback=progress_callback,
+            instance_slug=instance_slug,
         )
 
     if name == "write_python_script":

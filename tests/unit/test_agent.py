@@ -102,24 +102,34 @@ def test_dispatch_read_skill_from_lamindb_instance(monkeypatch) -> None:
     assert result["source_instance"] == "laminlabs/biomed-skills"
 
 
-def test_dispatch_read_skill_requires_uid() -> None:
+def test_dispatch_read_skill_passes_empty_uid_through(monkeypatch) -> None:
     run_context = RunContext(
         run_uid="run-1",
         prompt="read skill",
         model="m",
     )
-    try:
-        _dispatch_tool(
-            name="read_skill_from_lamindb_instance",
-            args={},
-            run_context=run_context,
-            default_output_file=Path("analysis.py"),
-            existing_generated_files=[],
-        )
-    except ValueError as exc:
-        assert "uid" in str(exc)
-    else:  # pragma: no cover - defensive assertion
-        raise AssertionError("Expected ValueError for missing uid")
+    monkeypatch.setattr(
+        "laminagent._agent.read_skill_from_lamindb_instance",
+        lambda **kwargs: {
+            "status": "success",
+            "skill_uid": kwargs["uid"],
+            "source_instance": kwargs["instance_slug"],
+            "content": "abc",
+            "run_uid": kwargs["run_uid"],
+            "warnings": [],
+            "message": "ok",
+        },
+    )
+    result = _dispatch_tool(
+        name="read_skill_from_lamindb_instance",
+        args={},
+        run_context=run_context,
+        default_output_file=Path("analysis.py"),
+        existing_generated_files=[],
+    )
+    assert result["status"] == "success"
+    assert result["skill_uid"] == ""
+    assert result["source_instance"] == ""
 
 
 def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
