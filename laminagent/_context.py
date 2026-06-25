@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import lamindb as ln
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def get_local_skill(
@@ -137,21 +141,49 @@ def read_skill_from_lamindb_instance(
     uid: str,
     run_uid: str,
     instance_slug: str = "laminlabs/biomed-skills",
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    total_start = time.perf_counter()
     normalized_uid = uid.strip()
     normalized_instance = instance_slug.strip() or "laminlabs/biomed-skills"
     if not normalized_uid:
         raise ValueError("Missing required skill uid.")
 
+    db_start = time.perf_counter()
     db = ln.DB(normalized_instance)
+    db_elapsed_ms = (time.perf_counter() - db_start) * 1000
+    if progress_callback is not None:
+        progress_callback(
+            f"skill lookup: opened DB('{normalized_instance}') in {db_elapsed_ms:.1f}ms"
+        )
+
+    record_start = time.perf_counter()
     record = db.Record.get(normalized_uid)
-    readme_block = record.ablocks.get(kind="readme")
+    record_elapsed_ms = (time.perf_counter() - record_start) * 1000
+    if progress_callback is not None:
+        progress_callback(
+            f"skill lookup: loaded Record('{normalized_uid}') in {record_elapsed_ms:.1f}ms"
+        )
+
+    readme_start = time.perf_counter()
+    readme_block = record.ablocks.get(kind="readme", is_latest=True)
     content = str(getattr(readme_block, "content", "") or "")
+    readme_elapsed_ms = (time.perf_counter() - readme_start) * 1000
+    if progress_callback is not None:
+        progress_callback(
+            f"skill lookup: loaded README block in {readme_elapsed_ms:.1f}ms"
+        )
 
     if not content.strip():
         raise ValueError(
             f"Skill '{normalized_uid}' was found in '{normalized_instance}', "
             "but README content is empty."
+        )
+    total_elapsed_ms = (time.perf_counter() - total_start) * 1000
+    if progress_callback is not None:
+        progress_callback(
+            f"skill lookup: completed in {total_elapsed_ms:.1f}ms "
+            f"(content_chars={len(content)})"
         )
 
     return {

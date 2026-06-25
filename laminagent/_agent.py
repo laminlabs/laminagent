@@ -116,6 +116,7 @@ def _post_generate_content(
     last_error: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
+        attempt_started_at = time.perf_counter()
         try:
             if progress_callback is not None:
                 progress_callback(f"gemini request attempt {attempt}/{max_attempts}")
@@ -127,22 +128,29 @@ def _post_generate_content(
             )
             status = response.status_code
             if status in {429, 500, 502, 503, 504} and attempt < max_attempts:
+                elapsed_ms = (time.perf_counter() - attempt_started_at) * 1000
                 if progress_callback is not None:
                     progress_callback(
-                        f"gemini transient status {status}, retrying in {backoff_seconds:.1f}s"
+                        f"gemini transient status {status} after {elapsed_ms:.1f}ms, retrying in {backoff_seconds:.1f}s"
                     )
                 time.sleep(backoff_seconds)
                 backoff_seconds *= 2
                 continue
             response.raise_for_status()
+            elapsed_ms = (time.perf_counter() - attempt_started_at) * 1000
+            if progress_callback is not None:
+                progress_callback(
+                    f"gemini request completed status={status} in {elapsed_ms:.1f}ms"
+                )
             return response.json()
         except requests.RequestException as exc:
             last_error = exc
             if attempt >= max_attempts:
                 break
+            elapsed_ms = (time.perf_counter() - attempt_started_at) * 1000
             if progress_callback is not None:
                 progress_callback(
-                    f"gemini request failed ({exc.__class__.__name__}), retrying in {backoff_seconds:.1f}s"
+                    f"gemini request failed ({exc.__class__.__name__}) after {elapsed_ms:.1f}ms, retrying in {backoff_seconds:.1f}s"
                 )
             time.sleep(backoff_seconds)
             backoff_seconds *= 2
@@ -164,6 +172,7 @@ def _dispatch_tool(
     run_context: RunContext,
     default_output_file: Path,
     existing_generated_files: list[str],
+    progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     if name == "read_skill_from_lamindb_instance":
         uid = str(args.get("uid") or "").strip()
@@ -172,6 +181,7 @@ def _dispatch_tool(
             uid=uid,
             run_uid=run_context.run_uid,
             instance_slug=instance_slug or "laminlabs/biomed-skills",
+            progress_callback=progress_callback,
         )
 
     if name == "write_python_script":
@@ -213,6 +223,15 @@ def _dispatch_tool(
     }
 
 
+def _prefixed_progress_callback(
+    callback: Callable[[str], None], step: int
+) -> Callable[[str], None]:
+    def wrapped(message: str) -> None:
+        callback(f"step {step}: {message}")
+
+    return wrapped
+
+
 def run_agent(
     *,
     api_key: str,
@@ -245,6 +264,7 @@ def run_agent(
         progress_callback(f"prompt: {run_context.prompt}")
 
     for step in range(1, max_steps + 1):
+        step_started_at = time.perf_counter()
         if progress_callback is not None:
             progress_callback(f"step {step}: waiting for model response")
         payload = {
@@ -265,12 +285,16 @@ def run_agent(
                 "request_payload": copy.deepcopy(payload),
             }
         )
+        llm_started_at = time.perf_counter()
         data = _post_generate_content(
             url=url,
             api_key=api_key,
             payload=payload,
             progress_callback=progress_callback,
         )
+        llm_elapsed_ms = (time.perf_counter() - llm_started_at) * 1000
+        if progress_callback is not None:
+            progress_callback(f"step {step}: llm roundtrip in {llm_elapsed_ms:.1f}ms")
         if progress_callback is not None:
             progress_callback(
                 "step "
@@ -304,6 +328,7 @@ def run_agent(
                     if isinstance(usage_metadata, dict)
                     else None
                 ),
+                "llm_roundtrip_ms": round(llm_elapsed_ms, 1),
                 "text": _extract_text(parts),
             }
         )
@@ -330,13 +355,22 @@ def run_agent(
                 }
             )
 
+            tool_progress_callback = (
+                _prefixed_progress_callback(progress_callback, step)
+                if progress_callback is not None
+                else None
+            )
+
+            tool_started_at = time.perf_counter()
             result = _dispatch_tool(
                 name=name,
                 args=args,
                 run_context=run_context,
                 default_output_file=output_file,
                 existing_generated_files=generated_files,
+                progress_callback=tool_progress_callback,
             )
+            tool_elapsed_ms = (time.perf_counter() - tool_started_at) * 1000
             generated = result.get("file")
             if isinstance(generated, str) and generated:
                 generated_file = generated
@@ -352,6 +386,7 @@ def run_agent(
                     "tool": name,
                     "tool_args": copy.deepcopy(args),
                     "tool_result": copy.deepcopy(result),
+                    "tool_duration_ms": round(tool_elapsed_ms, 1),
                 }
             )
             contents.append(
@@ -377,6 +412,9 @@ def run_agent(
                 progress_callback(
                     "step "
                     f"{step}: tool result payload={json.dumps(result, ensure_ascii=False, default=str)}"
+                )
+                progress_callback(
+                    f"step {step}: tool {name} completed in {tool_elapsed_ms:.1f}ms"
                 )
                 if status == "error" and result.get("message"):
                     progress_callback(f"step {step}: tool error: {result['message']}")
@@ -404,6 +442,9 @@ def run_agent(
             raise RuntimeError(fatal_error)
         if short_circuit_execute:
             break
+        if progress_callback is not None:
+            step_elapsed_ms = (time.perf_counter() - step_started_at) * 1000
+            progress_callback(f"step {step}: finished in {step_elapsed_ms:.1f}ms")
 
     return {
         "run_uid": run_context.run_uid,

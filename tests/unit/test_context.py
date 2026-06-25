@@ -145,15 +145,24 @@ def test_read_skill_from_lamindb_instance_success(monkeypatch) -> None:
 
     monkeypatch.setattr(context.ln, "DB", lambda _slug: _FakeSkillDB())
 
+    progress_messages: list[str] = []
     result = context.read_skill_from_lamindb_instance(
         uid="u5muNUOPnWPBuZ8z",
         run_uid="run-1",
         instance_slug="laminlabs/biomed-skills",
+        progress_callback=lambda message: progress_messages.append(message),
     )
     assert result["status"] == "success"
     assert result["skill_uid"] == "u5muNUOPnWPBuZ8z"
     assert result["source_instance"] == "laminlabs/biomed-skills"
     assert "DataFrameCurator" in result["content"]
+    assert any(
+        message.startswith("skill lookup: opened DB(") for message in progress_messages
+    )
+    assert any(
+        message.startswith("skill lookup: completed in ")
+        for message in progress_messages
+    )
 
 
 def test_read_skill_from_lamindb_instance_raises_on_db_error(monkeypatch) -> None:
