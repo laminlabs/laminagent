@@ -141,68 +141,18 @@ def read_skill_from_lamindb_instance(
     normalized_uid = uid.strip()
     normalized_instance = instance_slug.strip() or "laminlabs/biomed-skills"
     if not normalized_uid:
-        return {
-            "run_uid": run_uid,
-            "status": "error",
-            "skill_uid": normalized_uid,
-            "source_instance": normalized_instance,
-            "content": "",
-            "warnings": ["Missing required skill uid."],
-            "message": "Could not read skill: uid is required.",
-        }
+        raise ValueError("Missing required skill uid.")
 
-    warnings: list[str] = []
-    try:
-        db = ln.DB(normalized_instance)
-    except Exception as exc:
-        return {
-            "run_uid": run_uid,
-            "status": "error",
-            "skill_uid": normalized_uid,
-            "source_instance": normalized_instance,
-            "content": "",
-            "warnings": [f"Could not open DB('{normalized_instance}'): {exc}"],
-            "message": (
-                f"Could not read skill '{normalized_uid}' from '{normalized_instance}'."
-            ),
-        }
-
-    try:
-        record = db.Record.get(normalized_uid)
-        readme_block = record.ablocks.get(kind="readme")
-        content = str(getattr(readme_block, "content", "") or "")
-    except Exception as exc:
-        warnings.append(
-            f"Skill lookup failed for uid '{normalized_uid}' in '{normalized_instance}': {exc}"
-        )
-        return {
-            "run_uid": run_uid,
-            "status": "error",
-            "skill_uid": normalized_uid,
-            "source_instance": normalized_instance,
-            "content": "",
-            "warnings": warnings,
-            "message": (
-                f"Could not read skill '{normalized_uid}' from '{normalized_instance}'."
-            ),
-        }
+    db = ln.DB(normalized_instance)
+    record = db.Record.get(normalized_uid)
+    readme_block = record.ablocks.get(kind="readme")
+    content = str(getattr(readme_block, "content", "") or "")
 
     if not content.strip():
-        warnings.append(
-            f"README content was empty for skill '{normalized_uid}' in '{normalized_instance}'."
+        raise ValueError(
+            f"Skill '{normalized_uid}' was found in '{normalized_instance}', "
+            "but README content is empty."
         )
-        return {
-            "run_uid": run_uid,
-            "status": "error",
-            "skill_uid": normalized_uid,
-            "source_instance": normalized_instance,
-            "content": "",
-            "warnings": warnings,
-            "message": (
-                f"Skill '{normalized_uid}' was found in '{normalized_instance}', "
-                "but README content is empty."
-            ),
-        }
 
     return {
         "run_uid": run_uid,
@@ -210,7 +160,7 @@ def read_skill_from_lamindb_instance(
         "skill_uid": normalized_uid,
         "source_instance": normalized_instance,
         "content": content,
-        "warnings": warnings,
+        "warnings": [],
         "message": (
             f"Read skill '{normalized_uid}' from '{normalized_instance}' "
             f"({len(content)} chars)."

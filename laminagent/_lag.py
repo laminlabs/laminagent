@@ -679,12 +679,15 @@ def run_agent_authoring(
     )
     start = time.perf_counter()
     progress_callback: Callable[[str], None] | None = _progress_verbose_live()
-    result = run_agent(
-        api_key=api_key,
-        run_context=run_context,
-        output_file=output_path,
-        progress_callback=progress_callback,
-    )
+    try:
+        result = run_agent(
+            api_key=api_key,
+            run_context=run_context,
+            output_file=output_path,
+            progress_callback=progress_callback,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
     elapsed = time.perf_counter() - start
 
     generated_file = result.get("generated_file")

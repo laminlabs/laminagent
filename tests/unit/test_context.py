@@ -156,17 +156,19 @@ def test_read_skill_from_lamindb_instance_success(monkeypatch) -> None:
     assert "DataFrameCurator" in result["content"]
 
 
-def test_read_skill_from_lamindb_instance_error_is_soft(monkeypatch) -> None:
+def test_read_skill_from_lamindb_instance_raises_on_db_error(monkeypatch) -> None:
     def _raise(*_args, **_kwargs):
         raise RuntimeError("db unavailable")
 
     monkeypatch.setattr(context.ln, "DB", _raise)
 
-    result = context.read_skill_from_lamindb_instance(
-        uid="u5muNUOPnWPBuZ8z",
-        run_uid="run-1",
-        instance_slug="laminlabs/biomed-skills",
-    )
-    assert result["status"] == "error"
-    assert result["content"] == ""
-    assert "Could not open DB" in result["warnings"][0]
+    try:
+        context.read_skill_from_lamindb_instance(
+            uid="u5muNUOPnWPBuZ8z",
+            run_uid="run-1",
+            instance_slug="laminlabs/biomed-skills",
+        )
+    except RuntimeError as exc:
+        assert "db unavailable" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected RuntimeError from ln.DB failure")

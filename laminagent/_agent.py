@@ -167,12 +167,6 @@ def _dispatch_tool(
 ) -> dict[str, Any]:
     if name == "read_skill_from_lamindb_instance":
         uid = str(args.get("uid") or "").strip()
-        if not uid:
-            return {
-                "status": "error",
-                "message": "Missing required argument: uid",
-                "run_uid": run_context.run_uid,
-            }
         instance_slug = str(args.get("instance_slug") or "").strip()
         return read_skill_from_lamindb_instance(
             uid=uid,
@@ -407,8 +401,7 @@ def run_agent(
                 break
 
         if fatal_error is not None:
-            final_text = fatal_error
-            break
+            raise RuntimeError(fatal_error)
         if short_circuit_execute:
             break
 

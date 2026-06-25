@@ -108,15 +108,18 @@ def test_dispatch_read_skill_requires_uid() -> None:
         prompt="read skill",
         model="m",
     )
-    result = _dispatch_tool(
-        name="read_skill_from_lamindb_instance",
-        args={},
-        run_context=run_context,
-        default_output_file=Path("analysis.py"),
-        existing_generated_files=[],
-    )
-    assert result["status"] == "error"
-    assert "uid" in str(result["message"])
+    try:
+        _dispatch_tool(
+            name="read_skill_from_lamindb_instance",
+            args={},
+            run_context=run_context,
+            default_output_file=Path("analysis.py"),
+            existing_generated_files=[],
+        )
+    except ValueError as exc:
+        assert "uid" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected ValueError for missing uid")
 
 
 def test_run_agent_aggregates_usage_metadata(monkeypatch) -> None:
@@ -242,3 +245,51 @@ def test_run_agent_stops_after_successful_write_python_script(monkeypatch) -> No
     assert call_count["n"] == 1
     assert result["generated_file"] == "save_protein.py"
     assert result["final_text"] == "Wrote runnable script 'save_protein.py'."
+
+
+def test_run_agent_hard_fails_on_tool_error(monkeypatch) -> None:
+    run_context = RunContext(
+        run_uid="run-1",
+        prompt="write a script",
+        model="m",
+    )
+    tool_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "functionCall": {
+                                "name": "read_skill_from_lamindb_instance",
+                                "args": {"uid": "u5muNUOPnWPBuZ8z"},
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    monkeypatch.setattr(
+        "laminagent._agent._post_generate_content", lambda **_kwargs: tool_response
+    )
+    monkeypatch.setattr(
+        "laminagent._agent._dispatch_tool",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "Could not read skill 'u5muNUOPnWPBuZ8z' from 'laminlabs/biomed-skills'."
+            )
+        ),
+    )
+
+    try:
+        run_agent(
+            api_key="dummy",
+            run_context=run_context,
+            output_file=Path("out.py"),
+            max_steps=5,
+        )
+    except RuntimeError as exc:
+        assert "Could not read skill" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected RuntimeError for tool error")
