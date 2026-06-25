@@ -127,8 +127,9 @@ def test_get_lamindb_skill_falls_back_to_biomed_skills(monkeypatch) -> None:
 def test_read_skill_from_lamindb_instance_success(monkeypatch) -> None:
     class _FakeABlocks:
         @staticmethod
-        def get(*, kind: str):
+        def get(*, kind: str, is_latest: bool):
             assert kind == "readme"
+            assert is_latest is True
             return SimpleNamespace(content="Use DataFrameCurator.")
 
     class _FakeRecord:
