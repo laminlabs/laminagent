@@ -122,3 +122,63 @@ def test_get_lamindb_skill_falls_back_to_biomed_skills(monkeypatch) -> None:
     ]
     assert len(result["results"]) == 1
     assert result["results"][0]["type"] == "artifact"
+
+
+def test_read_skill_from_lamindb_instance_success(monkeypatch) -> None:
+    class _FakeABlocks:
+        @staticmethod
+        def get(*, kind: str, is_latest: bool):
+            assert kind == "readme"
+            assert is_latest is True
+            return SimpleNamespace(content="Use DataFrameCurator.")
+
+    class _FakeRecord:
+        ablocks = _FakeABlocks()
+
+    class _FakeRecordRegistry:
+        @staticmethod
+        def get(uid: str):
+            assert uid == "u5muNUOPnWPBuZ8z"
+            return _FakeRecord()
+
+    class _FakeSkillDB:
+        Record = _FakeRecordRegistry()
+
+    monkeypatch.setattr(context.ln, "DB", lambda _slug: _FakeSkillDB())
+
+    progress_messages: list[str] = []
+    result = context.read_skill_from_lamindb_instance(
+        uid="u5muNUOPnWPBuZ8z",
+        run_uid="run-1",
+        instance_slug="laminlabs/biomed-skills",
+        progress_callback=lambda message: progress_messages.append(message),
+    )
+    assert result["status"] == "success"
+    assert result["skill_uid"] == "u5muNUOPnWPBuZ8z"
+    assert result["source_instance"] == "laminlabs/biomed-skills"
+    assert "DataFrameCurator" in result["content"]
+    assert any(
+        message.startswith("skill lookup: opened DB(") for message in progress_messages
+    )
+    assert any(
+        message.startswith("skill lookup: completed in ")
+        for message in progress_messages
+    )
+
+
+def test_read_skill_from_lamindb_instance_raises_on_db_error(monkeypatch) -> None:
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("db unavailable")
+
+    monkeypatch.setattr(context.ln, "DB", _raise)
+
+    try:
+        context.read_skill_from_lamindb_instance(
+            uid="u5muNUOPnWPBuZ8z",
+            run_uid="run-1",
+            instance_slug="laminlabs/biomed-skills",
+        )
+    except RuntimeError as exc:
+        assert "db unavailable" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected RuntimeError from ln.DB failure")
