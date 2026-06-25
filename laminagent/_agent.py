@@ -23,8 +23,8 @@ SYSTEM_INSTRUCTION = (
     "Do not create helper runner scripts that only execute other generated scripts via subprocess; "
     "write the task directly in the produced runnable script. "
     "If the prompt references an existing script, update that script instead of creating a new one. "
-    "If the prompt references a biomed skill UID and instance, call read_skill_from_lamindb_instance "
-    "before writing code and follow the returned README instructions. "
+    "If the prompt references a skill UID and a LaminDB instance, call read_skill_from_lamindb_instance "
+    "before writing code and follow the returned skill instructions. "
     "Do not write defensive code but write concise cosde that assumes the latest version of lamindb."
 )
 
