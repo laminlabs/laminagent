@@ -35,9 +35,11 @@ def test_curate_mini_immuno() -> None:
     code = script.read_text()
     ast.parse(code)
     print(code)
-    assert "ln.Artifact(df" in code, "ln.Artifact(df not in code"
+    assert "ln.Artifact.from_dataframe(" in code, (
+        "ln.Artifact.from_dataframe( not in code"
+    )
 
-    # step 2: execute the script
+    # step 2: execute the script - it should fail!
     script_result = subprocess.run(
         [sys.executable, script.name],
         cwd=RUN_DIR,
@@ -45,6 +47,10 @@ def test_curate_mini_immuno() -> None:
         text=True,
         check=False,
     )
-    assert script_result.returncode == 0, (
+    assert script_result.returncode == 1, (
         f"{script.name} failed\nSTDOUT:\n{script_result.stdout}\nSTDERR:\n{script_result.stderr}"
+    )
+    assert (
+        "lamindb.errors.ValidationError: 1 term not validated in feature 'perturbation': 'IFNJ'"
+        in script_result.stderr
     )
