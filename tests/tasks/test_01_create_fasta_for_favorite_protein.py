@@ -24,6 +24,23 @@ def is_valid_fasta(text: str) -> bool:
     return bool(seq) and all(c.upper() in _VALID_AMINO_ACIDS for c in seq)
 
 
+def run_task(run_dir: Path) -> None:
+    """Run one trial of the FASTA task. Raises on failure."""
+    # 1. agent writes a script
+    run_laminagent(run_dir, "--prompt", PROMPT)
+    scripts = list(run_dir.rglob("*.py"))
+    assert len(scripts) == 1
+    ast.parse(scripts[0].read_text())
+
+    # 2. script executes
+    subprocess.run([sys.executable, scripts[0].name], cwd=run_dir, check=True)
+
+    # 3. valid .fasta produced
+    fasta_files = list(run_dir.rglob("*.fasta"))
+    assert fasta_files
+    assert all(is_valid_fasta(f.read_text()) for f in fasta_files)
+
+
 def test_create_favorite_protein_sequence() -> None:
     # step 1: write the script
     result = run_laminagent(TESTDB1_DEV_DIR, "--prompt", PROMPT)
@@ -44,15 +61,10 @@ def test_create_favorite_protein_sequence() -> None:
     assert runnable_files
     assert len(runnable_files) == 1, "agent should write exactly one .py file"
     script = runnable_files[0]
-    code = script.read_text()
-    ast.parse(code)
+    ast.parse(script.read_text())
 
     # step 2: execute the script directly
-    subprocess.run(
-        [sys.executable, script.name],
-        cwd=TESTDB1_DEV_DIR,
-        check=True,
-    )
+    subprocess.run([sys.executable, script.name], cwd=TESTDB1_DEV_DIR, check=True)
 
     # step 3: check .fasta was produced and is valid
     fasta_files = list(Path(TESTDB1_DEV_DIR).rglob("*.fasta"))
